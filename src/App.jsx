@@ -141,6 +141,20 @@ function PostToXBtn({ tweets, hashtags }) {
 function SectionLabel({ children }) {
   return (<div style={{ fontSize: 10, fontFamily: mono, color: T.dim, letterSpacing: 1.5, marginBottom: 10, textTransform: "uppercase" }}>{children}</div>);
 }
+
+// 객체를 안전하게 문자열로 변환 (React 렌더링용)
+function safeStr(val) {
+  if (val === null || val === undefined) return "";
+  if (typeof val === "string") return val;
+  if (typeof val === "number") return String(val);
+  if (typeof val === "object") {
+    // 배열이면 join
+    if (Array.isArray(val)) return val.join(", ");
+    // 객체면 key:value 나열
+    return Object.entries(val).map(([k, v]) => `${k}: ${v}`).join(" / ");
+  }
+  return String(val);
+}
 function CopyBtn({ text, label = "복사" }) {
   const [copied, setCopied] = useState(false);
   const copy = (e) => { e.stopPropagation(); navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); };
@@ -367,7 +381,7 @@ ${noGameText}
 
       {result && !result.error && !result.parseError && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {result.summary && <div style={{ padding: "12px 16px", background: T.accentDim, borderRadius: 8, border: `1px solid ${T.accent}25`, fontSize: 13, fontWeight: 600, color: T.accent }}>💬 {result.summary}</div>}
+          {result.summary && <div style={{ padding: "12px 16px", background: T.accentDim, borderRadius: 8, border: `1px solid ${T.accent}25`, fontSize: 13, fontWeight: 600, color: T.accent }}>💬 {safeStr(result.summary)}</div>}
 
           {result.players?.length > 0 && (
             <div>
@@ -376,14 +390,14 @@ ${noGameText}
                 {result.players.map((p, i) => (
                   <div key={i} style={{ padding: "14px 16px", background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                      <span style={{ fontSize: 16, fontWeight: 800, color: T.text }}>{p.name}</span>
-                      <span style={{ fontSize: 9, fontFamily: mono, padding: "2px 7px", borderRadius: 4, background: T.blueDim, color: T.blue }}>{p.team}</span>
-                      <span style={{ fontSize: 9, fontFamily: mono, padding: "2px 7px", borderRadius: 4, background: T.surface2, color: T.dim }}>{p.position}</span>
+                      <span style={{ fontSize: 16, fontWeight: 800, color: T.text }}>{safeStr(p.name)}</span>
+                      <span style={{ fontSize: 9, fontFamily: mono, padding: "2px 7px", borderRadius: 4, background: T.blueDim, color: T.blue }}>{safeStr(p.team)}</span>
+                      <span style={{ fontSize: 9, fontFamily: mono, padding: "2px 7px", borderRadius: 4, background: T.surface2, color: T.dim }}>{safeStr(p.position)}</span>
                     </div>
-                    {p.game_result && <div style={{ fontSize: 11, color: T.muted, marginBottom: 4 }}>🏟️ {p.game_result}</div>}
-                    <div style={{ fontSize: 13, color: T.text, fontWeight: 600, marginBottom: 4 }}>📊 {p.today_stats}</div>
-                    {p.season_stats && <div style={{ fontSize: 11, color: T.dim, marginBottom: 4 }}>📈 시즌: {p.season_stats}</div>}
-                    {p.highlight && <div style={{ fontSize: 11, color: T.gold, fontWeight: 600, padding: "4px 8px", background: T.goldDim, borderRadius: 4, display: "inline-block" }}>⭐ {p.highlight}</div>}
+                    {p.game_result && <div style={{ fontSize: 11, color: T.muted, marginBottom: 4 }}>🏟️ {safeStr(p.game_result)}</div>}
+                    <div style={{ fontSize: 13, color: T.text, fontWeight: 600, marginBottom: 4 }}>📊 {safeStr(p.today_stats)}</div>
+                    {p.season_stats && <div style={{ fontSize: 11, color: T.dim, marginBottom: 4 }}>📈 시즌: {safeStr(p.season_stats)}</div>}
+                    {p.highlight && <div style={{ fontSize: 11, color: T.gold, fontWeight: 600, padding: "4px 8px", background: T.goldDim, borderRadius: 4, display: "inline-block" }}>⭐ {safeStr(p.highlight)}</div>}
                   </div>
                 ))}
               </div>
@@ -569,8 +583,8 @@ ${extra ? `추가 요청: ${extra}` : ""}
       {result && !result.error && !result.parseError && (
         <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 12 }}>
           {/* Title & Summary */}
-          {result.title && <div style={{ fontSize: 16, fontWeight: 800, color: T.text }}>{result.title}</div>}
-          {result.summary && <div style={{ padding: "12px 16px", background: T.accentDim, borderRadius: 8, border: `1px solid ${T.accent}25`, fontSize: 13, fontWeight: 600, color: T.accent }}>💬 {result.summary}</div>}
+          {result.title && <div style={{ fontSize: 16, fontWeight: 800, color: T.text }}>{safeStr(result.title)}</div>}
+          {result.summary && <div style={{ padding: "12px 16px", background: T.accentDim, borderRadius: 8, border: `1px solid ${T.accent}25`, fontSize: 13, fontWeight: 600, color: T.accent }}>💬 {safeStr(result.summary)}</div>}
 
           <SectionLabel>3채널 포스팅</SectionLabel>
 
@@ -687,7 +701,7 @@ function SettingsTab() {
       <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>앱 정보</div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 2, fontFamily: mono }}>
-          <div><span style={{ color: T.dim }}>앱:</span> Sports AI Agent v1.9</div>
+          <div><span style={{ color: T.dim }}>앱:</span> Sports AI Agent v2.0</div>
           <div><span style={{ color: T.dim }}>브랜드:</span> DoubleY Space</div>
           <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 (분석·MLB) / Haiku 4.5 (쇼츠)</div>
           <div><span style={{ color: T.dim }}>MLB:</span> 🇰🇷 유튜브 + X + 인스타 3채널</div>
@@ -719,7 +733,7 @@ export default function App() {
       <style>{CSS}</style>
       <div style={{ padding: "16px 20px 0", borderBottom: `1px solid ${T.border}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <div><div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5 }}><span style={{ color: T.accent }}>⚡</span> Sports AI</div><div style={{ fontSize: 10, fontFamily: mono, color: T.dim, marginTop: 2 }}>v1.9 | DoubleY Space</div></div>
+          <div><div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5 }}><span style={{ color: T.accent }}>⚡</span> Sports AI</div><div style={{ fontSize: 10, fontFamily: mono, color: T.dim, marginTop: 2 }}>v2.0 | DoubleY Space</div></div>
           <div style={{ fontSize: 10, fontFamily: mono, color: T.dim, textAlign: "right" }}>{new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", weekday: "short" })}</div>
         </div>
         <div style={{ display: "flex", gap: 0 }}>{tabs.map(t => (<button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: "10px 0", fontSize: 12, fontFamily: font, fontWeight: 600, cursor: "pointer", background: "none", border: "none", color: tab === t.id ? T.accent : T.dim, borderBottom: `2px solid ${tab === t.id ? T.accent : "transparent"}`, transition: "all 0.15s" }}>{t.label}</button>))}</div>

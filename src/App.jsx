@@ -246,7 +246,9 @@ function MLBKoreanTab({ onSave }) {
 }
 \`\`\`
 
-한국어. 성적 좋으면 축하, 부진하면 응원 톤.`;
+한국어. 성적 좋으면 축하, 부진하면 응원 톤.
+
+⚠️ 중요: 반드시 \`\`\`json 으로 시작하는 JSON 코드블록만 출력하세요. JSON 앞뒤에 설명, 인사말, 분석 텍스트를 절대 넣지 마세요. 오직 JSON만 출력하세요.`;
 
   const generate = async () => {
     setLoading(true); setResult(null); setExpandedChannel(null);
@@ -266,8 +268,9 @@ function MLBKoreanTab({ onSave }) {
       );
       let parsed;
       try {
-        const jsonMatch = raw.match(/```json\s*([\s\S]*?)```/) || raw.match(/\{[\s\S]*\}/);
-        parsed = JSON.parse((jsonMatch[1] || jsonMatch[0]).trim());
+        const codeBlock = raw.match(/```json\s*([\s\S]*?)```/);
+        if (codeBlock) { parsed = JSON.parse(codeBlock[1].trim()); }
+        else { const f = raw.indexOf("{"), l = raw.lastIndexOf("}"); parsed = (f !== -1 && l > f) ? JSON.parse(raw.substring(f, l + 1)) : { raw, parseError: true }; }
       } catch { parsed = { raw, parseError: true }; }
       setResult(parsed);
       const entry = { id: Date.now(), type: "mlb_korean", date: new Date().toISOString(), data: parsed };
@@ -465,8 +468,9 @@ ${extra ? `추가 요청: ${extra}` : ""}
 
       let parsed;
       try {
-        const jsonMatch = raw.match(/```json\s*([\s\S]*?)```/) || raw.match(/\{[\s\S]*\}/);
-        parsed = JSON.parse((jsonMatch[1] || jsonMatch[0]).trim());
+        const codeBlock = raw.match(/```json\s*([\s\S]*?)```/);
+        if (codeBlock) { parsed = JSON.parse(codeBlock[1].trim()); }
+        else { const f = raw.indexOf("{"), l = raw.lastIndexOf("}"); parsed = (f !== -1 && l > f) ? JSON.parse(raw.substring(f, l + 1)) : { raw, parseError: true }; }
       } catch { parsed = { raw, parseError: true }; }
 
       setResult(parsed);
@@ -634,7 +638,7 @@ function SettingsTab() {
       <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>앱 정보</div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 2, fontFamily: mono }}>
-          <div><span style={{ color: T.dim }}>앱:</span> Sports AI Agent v1.7</div>
+          <div><span style={{ color: T.dim }}>앱:</span> Sports AI Agent v1.8</div>
           <div><span style={{ color: T.dim }}>브랜드:</span> DoubleY Space</div>
           <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 (분석·MLB) / Haiku 4.5 (쇼츠)</div>
           <div><span style={{ color: T.dim }}>MLB:</span> 🇰🇷 유튜브 + X + 인스타 3채널</div>
@@ -666,7 +670,7 @@ export default function App() {
       <style>{CSS}</style>
       <div style={{ padding: "16px 20px 0", borderBottom: `1px solid ${T.border}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <div><div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5 }}><span style={{ color: T.accent }}>⚡</span> Sports AI</div><div style={{ fontSize: 10, fontFamily: mono, color: T.dim, marginTop: 2 }}>v1.7 | DoubleY Space</div></div>
+          <div><div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5 }}><span style={{ color: T.accent }}>⚡</span> Sports AI</div><div style={{ fontSize: 10, fontFamily: mono, color: T.dim, marginTop: 2 }}>v1.8 | DoubleY Space</div></div>
           <div style={{ fontSize: 10, fontFamily: mono, color: T.dim, textAlign: "right" }}>{new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", weekday: "short" })}</div>
         </div>
         <div style={{ display: "flex", gap: 0 }}>{tabs.map(t => (<button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: "10px 0", fontSize: 12, fontFamily: font, fontWeight: 600, cursor: "pointer", background: "none", border: "none", color: tab === t.id ? T.accent : T.dim, borderBottom: `2px solid ${tab === t.id ? T.accent : "transparent"}`, transition: "all 0.15s" }}>{t.label}</button>))}</div>

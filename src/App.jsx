@@ -182,10 +182,29 @@ function MLBKoreanTab({ onSave }) {
 
   const SYSTEM = `당신은 MLB 전문 스포츠 기자이자 SNS 콘텐츠 크리에이터입니다.
 
-**임무:** MLB에서 활약 중인 한국인 선수들의 최신 경기 성적을 웹 검색으로 조사하고, 3개 채널(유튜브 쇼츠, 인스타그램, X/트위터)용 포스팅을 한 번에 생성합니다.
+**임무:** 현재 MLB 25인 로스터(또는 26인 확장 로스터)에 등록된 한국인 선수들의 최신 경기 성적을 웹 검색으로 조사하고, 3개 채널(유튜브 쇼츠, 인스타그램, X/트위터)용 포스팅을 한 번에 생성합니다.
+
+**현재 MLB 활동 한국인 선수 (2025시즌 기준):**
+- 김혜성 (미네소타 트윈스)
+- 이정후 (샌프란시스코 자이언츠)
+- 배지환 (세인트루이스 카디널스 또는 현재 소속팀)
+- 김하성 (현재 소속팀 확인)
+- 송성문 (현재 소속팀 확인)
+
+**제외 선수 (MLB에서 뛰고 있지 않음):**
+- 류현진 (KBO 복귀) — 절대 포함하지 마세요
+- 김광현 (KBO 복귀) — 절대 포함하지 마세요
+- 김도영 (KBO 소속) — 절대 포함하지 마세요
+
+웹 검색 시 위 제외 선수가 나오면 무시하세요. MLB 로스터에 없는 선수는 포함하지 마세요.
+
+**날짜/시간 규칙:**
+- MLB 경기 날짜는 반드시 **미국 동부시간(ET)** 기준으로 표시하세요
+- date 필드에 "(ET)" 표기를 추가하세요 (예: "2026년 5월 12일 (ET)")
+- 한국시간과 미국시간이 다르므로 혼동하지 마세요
 
 **반드시 웹 검색으로 확인할 것:**
-1. 어제/오늘 MLB 경기에 출전한 한국인 선수 전원 탐색
+1. 지정된 날짜의 MLB 경기에 출전한 한국인 선수 탐색 (위 목록 기준)
 2. 각 선수의 당일 성적 (타율, 안타, 홈런, 타점, 투구이닝, 삼진, 자책점 등)
 3. 시즌 누적 성적
 4. 팀 경기 결과 (스코어)
@@ -194,7 +213,7 @@ function MLBKoreanTab({ onSave }) {
 
 \`\`\`json
 {
-  "date": "날짜",
+  "date": "날짜 (ET)",
   "players": [
     {
       "name": "선수명",
@@ -234,7 +253,15 @@ function MLBKoreanTab({ onSave }) {
     try {
       const dateQuery = customDate || "어제와 오늘";
       const raw = await callClaude(
-        [{ role: "user", content: `${dateQuery} MLB 경기에서 한국인 선수들의 성적을 모두 검색해서 리포트를 만들어주세요. 현재 MLB에서 활약 중인 한국인 선수를 빠짐없이 검색해주세요. (김혜성, 이정후, 배지환, 김도영, 류현진, 김광현 등 전부) 반드시 웹 검색으로 최신 결과를 확인하세요.` }],
+        [{ role: "user", content: `미국 동부시간(ET) 기준 ${dateQuery} MLB 경기에서 한국인 선수들의 성적을 검색해서 리포트를 만들어주세요.
+
+현재 MLB 로스터에 있는 한국인 선수만 검색하세요:
+김혜성, 이정후, 배지환, 김하성, 송성문 등 현재 MLB에서 뛰는 선수만.
+
+⚠️ 류현진, 김광현, 김도영은 MLB에 없으니 절대 포함하지 마세요.
+
+날짜는 미국 동부시간(ET) 기준으로 표시해 주세요.
+반드시 웹 검색으로 최신 결과를 확인하세요.` }],
         SYSTEM, 4000, SONNET
       );
       let parsed;
@@ -607,7 +634,7 @@ function SettingsTab() {
       <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>앱 정보</div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 2, fontFamily: mono }}>
-          <div><span style={{ color: T.dim }}>앱:</span> Sports AI Agent v1.6</div>
+          <div><span style={{ color: T.dim }}>앱:</span> Sports AI Agent v1.7</div>
           <div><span style={{ color: T.dim }}>브랜드:</span> DoubleY Space</div>
           <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 (분석·MLB) / Haiku 4.5 (쇼츠)</div>
           <div><span style={{ color: T.dim }}>MLB:</span> 🇰🇷 유튜브 + X + 인스타 3채널</div>
@@ -639,7 +666,7 @@ export default function App() {
       <style>{CSS}</style>
       <div style={{ padding: "16px 20px 0", borderBottom: `1px solid ${T.border}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <div><div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5 }}><span style={{ color: T.accent }}>⚡</span> Sports AI</div><div style={{ fontSize: 10, fontFamily: mono, color: T.dim, marginTop: 2 }}>v1.6 | DoubleY Space</div></div>
+          <div><div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5 }}><span style={{ color: T.accent }}>⚡</span> Sports AI</div><div style={{ fontSize: 10, fontFamily: mono, color: T.dim, marginTop: 2 }}>v1.7 | DoubleY Space</div></div>
           <div style={{ fontSize: 10, fontFamily: mono, color: T.dim, textAlign: "right" }}>{new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", weekday: "short" })}</div>
         </div>
         <div style={{ display: "flex", gap: 0 }}>{tabs.map(t => (<button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: "10px 0", fontSize: 12, fontFamily: font, fontWeight: 600, cursor: "pointer", background: "none", border: "none", color: tab === t.id ? T.accent : T.dim, borderBottom: `2px solid ${tab === t.id ? T.accent : "transparent"}`, transition: "all 0.15s" }}>{t.label}</button>))}</div>

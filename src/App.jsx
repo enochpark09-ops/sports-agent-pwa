@@ -71,6 +71,73 @@ function Chip({ children, active, onClick, color = T.accent }) {
 function Btn({ children, onClick, disabled, color = T.accent, full, small }) {
   return (<button onClick={onClick} disabled={disabled} style={{ padding: small ? "8px 14px" : "12px 20px", borderRadius: 8, fontSize: small ? 11 : 13, fontFamily: font, fontWeight: 700, cursor: disabled ? "not-allowed" : "pointer", border: "none", width: full ? "100%" : "auto", background: disabled ? T.surface2 : color, color: disabled ? T.dim : "#000", opacity: disabled ? 0.5 : 1, transition: "all 0.15s", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{children}</button>);
 }
+
+// X 자동 포스팅 함수
+async function postToX(tweets, hashtags) {
+  const res = await fetch("/api/post-x", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tweets, hashtags }),
+  });
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error || "X 포스팅 실패");
+  return data;
+}
+
+// X 포스팅 버튼 컴포넌트
+function PostToXBtn({ tweets, hashtags }) {
+  const [status, setStatus] = useState("idle"); // idle | loading | success | error
+  const [result, setResult] = useState(null);
+
+  const handlePost = async () => {
+    if (!tweets?.length) return;
+    if (!confirm(`X에 ${tweets.length}개 트윗 스레드를 포스팅할까요?`)) return;
+    setStatus("loading");
+    try {
+      const data = await postToX(tweets, hashtags);
+      setStatus("success");
+      setResult(data);
+      setTimeout(() => setStatus("idle"), 5000);
+    } catch (e) {
+      setStatus("error");
+      setResult({ error: e.message });
+      setTimeout(() => setStatus("idle"), 5000);
+    }
+  };
+
+  const colors = {
+    idle: { bg: `${T.text}18`, border: `${T.text}44`, text: T.text },
+    loading: { bg: `${T.blue}18`, border: `${T.blue}44`, text: T.blue },
+    success: { bg: `${T.green}18`, border: `${T.green}44`, text: T.green },
+    error: { bg: `${T.red}18`, border: `${T.red}44`, text: T.red },
+  };
+  const c = colors[status];
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button onClick={handlePost} disabled={status === "loading"} style={{
+        width: "100%", padding: "10px 0", borderRadius: 8, fontSize: 12,
+        fontFamily: font, fontWeight: 700, cursor: status === "loading" ? "not-allowed" : "pointer",
+        background: c.bg, border: `1px solid ${c.border}`, color: c.text,
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+      }}>
+        {status === "idle" && <>𝕏 X에 바로 포스팅</>}
+        {status === "loading" && <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span> 포스팅 중...</>}
+        {status === "success" && <>✅ 포스팅 완료!</>}
+        {status === "error" && <>❌ 실패 — 탭하여 재시도</>}
+      </button>
+      {status === "success" && result?.thread_url && (
+        <a href={result.thread_url} target="_blank" rel="noopener noreferrer" style={{
+          display: "block", textAlign: "center", fontSize: 11, color: T.accent,
+          marginTop: 6, fontFamily: mono,
+        }}>🔗 스레드 확인하기 →</a>
+      )}
+      {status === "error" && result?.error && (
+        <div style={{ fontSize: 10, color: T.red, marginTop: 4, textAlign: "center" }}>{result.error}</div>
+      )}
+    </div>
+  );
+}
 function SectionLabel({ children }) {
   return (<div style={{ fontSize: 10, fontFamily: mono, color: T.dim, letterSpacing: 1.5, marginBottom: 10, textTransform: "uppercase" }}>{children}</div>);
 }
@@ -283,6 +350,7 @@ function MLBKoreanTab({ onSave }) {
                   ))}
                 </div>
                 <TagList tags={result.x_thread.hashtags} />
+                <PostToXBtn tweets={result.x_thread.tweets} hashtags={result.x_thread.hashtags} />
               </ChannelCard>
             )}
           </div>
@@ -466,6 +534,7 @@ ${extra ? `추가 요청: ${extra}` : ""}
                 ))}
               </div>
               <TagList tags={result.x_thread.hashtags} />
+              <PostToXBtn tweets={result.x_thread.tweets} hashtags={result.x_thread.hashtags} />
             </ChannelCard>
           )}
 
@@ -538,7 +607,7 @@ function SettingsTab() {
       <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>앱 정보</div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 2, fontFamily: mono }}>
-          <div><span style={{ color: T.dim }}>앱:</span> Sports AI Agent v1.5</div>
+          <div><span style={{ color: T.dim }}>앱:</span> Sports AI Agent v1.6</div>
           <div><span style={{ color: T.dim }}>브랜드:</span> DoubleY Space</div>
           <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 (분석·MLB) / Haiku 4.5 (쇼츠)</div>
           <div><span style={{ color: T.dim }}>MLB:</span> 🇰🇷 유튜브 + X + 인스타 3채널</div>
@@ -570,7 +639,7 @@ export default function App() {
       <style>{CSS}</style>
       <div style={{ padding: "16px 20px 0", borderBottom: `1px solid ${T.border}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <div><div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5 }}><span style={{ color: T.accent }}>⚡</span> Sports AI</div><div style={{ fontSize: 10, fontFamily: mono, color: T.dim, marginTop: 2 }}>v1.5 | DoubleY Space</div></div>
+          <div><div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5 }}><span style={{ color: T.accent }}>⚡</span> Sports AI</div><div style={{ fontSize: 10, fontFamily: mono, color: T.dim, marginTop: 2 }}>v1.6 | DoubleY Space</div></div>
           <div style={{ fontSize: 10, fontFamily: mono, color: T.dim, textAlign: "right" }}>{new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", weekday: "short" })}</div>
         </div>
         <div style={{ display: "flex", gap: 0 }}>{tabs.map(t => (<button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: "10px 0", fontSize: 12, fontFamily: font, fontWeight: 600, cursor: "pointer", background: "none", border: "none", color: tab === t.id ? T.accent : T.dim, borderBottom: `2px solid ${tab === t.id ? T.accent : "transparent"}`, transition: "all 0.15s" }}>{t.label}</button>))}</div>

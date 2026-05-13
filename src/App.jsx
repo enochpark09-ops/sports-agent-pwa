@@ -138,6 +138,89 @@ function PostToXBtn({ tweets, hashtags }) {
     </div>
   );
 }
+
+// 네이버 블로그 포스팅 버튼 컴포넌트
+function PostToNaverBtn({ title, body, tags }) {
+  const [status, setStatus] = useState("idle");
+  const [result, setResult] = useState(null);
+
+  const getNaverToken = () => localStorage.getItem("naver_access_token") || "";
+
+  const handleLogin = () => {
+    window.location.href = "/api/naver-login";
+  };
+
+  const handlePost = async () => {
+    const token = getNaverToken();
+    if (!token) {
+      if (confirm("네이버 로그인이 필요합니다. 로그인 하시겠습니까?")) {
+        handleLogin();
+      }
+      return;
+    }
+    if (!confirm("네이버 블로그에 글을 게시할까요?")) return;
+    setStatus("loading");
+    try {
+      const res = await fetch("/api/post-naver", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, contents: body, tags, accessToken: token }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "포스팅 실패");
+      setStatus("success");
+      setResult(data);
+      setTimeout(() => setStatus("idle"), 5000);
+    } catch (e) {
+      setStatus("error");
+      setResult({ error: e.message });
+      // 토큰 만료 시 재로그인 안내
+      if (e.message.includes("401") || e.message.includes("token")) {
+        localStorage.removeItem("naver_access_token");
+      }
+      setTimeout(() => setStatus("idle"), 5000);
+    }
+  };
+
+  const naverGreen = "#03C75A";
+  const colors = {
+    idle: { bg: `${naverGreen}18`, border: `${naverGreen}44`, text: naverGreen },
+    loading: { bg: `${T.blue}18`, border: `${T.blue}44`, text: T.blue },
+    success: { bg: `${T.green}18`, border: `${T.green}44`, text: T.green },
+    error: { bg: `${T.red}18`, border: `${T.red}44`, text: T.red },
+  };
+  const c = colors[status];
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button onClick={handlePost} disabled={status === "loading"} style={{
+        width: "100%", padding: "10px 0", borderRadius: 8, fontSize: 12,
+        fontFamily: font, fontWeight: 700, cursor: status === "loading" ? "not-allowed" : "pointer",
+        background: c.bg, border: `1px solid ${c.border}`, color: c.text,
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+      }}>
+        {status === "idle" && <>📝 네이버 블로그에 바로 포스팅</>}
+        {status === "loading" && <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span> 포스팅 중...</>}
+        {status === "success" && <>✅ 포스팅 완료!</>}
+        {status === "error" && <>❌ 실패 — 탭하여 재시도</>}
+      </button>
+      {status === "success" && result?.url && (
+        <a href={result.url} target="_blank" rel="noopener noreferrer" style={{
+          display: "block", textAlign: "center", fontSize: 11, color: T.accent, marginTop: 6, fontFamily: mono,
+        }}>🔗 블로그 글 확인하기 →</a>
+      )}
+      {status === "error" && result?.error && (
+        <div style={{ fontSize: 10, color: T.red, marginTop: 4, textAlign: "center" }}>{result.error}</div>
+      )}
+      {!getNaverToken() && status === "idle" && (
+        <div onClick={handleLogin} style={{
+          fontSize: 10, color: T.muted, marginTop: 6, textAlign: "center", cursor: "pointer",
+          textDecoration: "underline",
+        }}>🔑 네이버 로그인이 필요합니다 (클릭)</div>
+      )}
+    </div>
+  );
+}
 function SectionLabel({ children }) {
   return (<div style={{ fontSize: 10, fontFamily: mono, color: T.dim, letterSpacing: 1.5, marginBottom: 10, textTransform: "uppercase" }}>{children}</div>);
 }
@@ -611,6 +694,7 @@ ${extra ? `추가 요청: ${extra}` : ""}
                 </div>
               )}
               <TagList tags={result.naver_blog.tags} />
+              <PostToNaverBtn title={result.naver_blog.title} body={result.naver_blog.body} tags={result.naver_blog.tags} />
             </ChannelCard>
           )}
 
@@ -698,10 +782,21 @@ function SettingsTab() {
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>데이터 관리</div>
         <button onClick={() => { if (confirm("모든 기록 삭제?")) { localStorage.removeItem("dy_sports_history"); alert("삭제 완료"); } }} style={{ padding: "8px 14px", borderRadius: 6, fontSize: 11, fontFamily: font, fontWeight: 600, cursor: "pointer", border: `1px solid ${T.red}33`, background: T.redDim, color: T.red }}>히스토리 전체 삭제</button>
       </div>
+      <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}`, marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>네이버 블로그 연동</div>
+        {localStorage.getItem("naver_access_token") ? (
+          <div>
+            <div style={{ fontSize: 11, color: "#03C75A", marginBottom: 8 }}>✅ 네이버 로그인됨</div>
+            <button onClick={() => { localStorage.removeItem("naver_access_token"); localStorage.removeItem("naver_refresh_token"); alert("로그아웃 완료"); }} style={{ padding: "8px 14px", borderRadius: 6, fontSize: 11, fontFamily: font, fontWeight: 600, cursor: "pointer", border: `1px solid ${T.border}`, background: T.surface2, color: T.muted }}>로그아웃</button>
+          </div>
+        ) : (
+          <button onClick={() => { window.location.href = "/api/naver-login"; }} style={{ padding: "10px 16px", borderRadius: 8, fontSize: 12, fontFamily: font, fontWeight: 700, cursor: "pointer", border: "none", background: "#03C75A", color: "#fff" }}>네이버 로그인</button>
+        )}
+      </div>
       <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>앱 정보</div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 2, fontFamily: mono }}>
-          <div><span style={{ color: T.dim }}>앱:</span> Sports AI Agent v2.0</div>
+          <div><span style={{ color: T.dim }}>앱:</span> Sports AI Agent v2.1</div>
           <div><span style={{ color: T.dim }}>브랜드:</span> DoubleY Space</div>
           <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 (분석·MLB) / Haiku 4.5 (쇼츠)</div>
           <div><span style={{ color: T.dim }}>MLB:</span> 🇰🇷 유튜브 + X + 인스타 3채널</div>
@@ -728,12 +823,30 @@ export default function App() {
   const [, forceUpdate] = useState(0);
   const tabs = [{ id: "mlb", label: "🇰🇷 MLB" }, { id: "analysis", label: "⚡ 분석" }, { id: "history", label: "📂" }, { id: "settings", label: "⚙️" }];
 
+  // 네이버 OAuth 콜백 토큰 저장
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const naverToken = params.get("naver_token");
+    const naverError = params.get("naver_error");
+    if (naverToken) {
+      localStorage.setItem("naver_access_token", naverToken);
+      const naverRefresh = params.get("naver_refresh");
+      if (naverRefresh) localStorage.setItem("naver_refresh_token", naverRefresh);
+      window.history.replaceState({}, "", "/");
+      alert("✅ 네이버 로그인 완료! 이제 블로그 포스팅이 가능합니다.");
+    }
+    if (naverError) {
+      window.history.replaceState({}, "", "/");
+      alert(`❌ 네이버 로그인 실패: ${naverError}`);
+    }
+  }, []);
+
   return (
     <div style={{ minHeight: "100vh", background: T.bg, fontFamily: font, color: T.text, maxWidth: 520, margin: "0 auto" }}>
       <style>{CSS}</style>
       <div style={{ padding: "16px 20px 0", borderBottom: `1px solid ${T.border}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <div><div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5 }}><span style={{ color: T.accent }}>⚡</span> Sports AI</div><div style={{ fontSize: 10, fontFamily: mono, color: T.dim, marginTop: 2 }}>v2.0 | DoubleY Space</div></div>
+          <div><div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5 }}><span style={{ color: T.accent }}>⚡</span> Sports AI</div><div style={{ fontSize: 10, fontFamily: mono, color: T.dim, marginTop: 2 }}>v2.1 | DoubleY Space</div></div>
           <div style={{ fontSize: 10, fontFamily: mono, color: T.dim, textAlign: "right" }}>{new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", weekday: "short" })}</div>
         </div>
         <div style={{ display: "flex", gap: 0 }}>{tabs.map(t => (<button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: "10px 0", fontSize: 12, fontFamily: font, fontWeight: 600, cursor: "pointer", background: "none", border: "none", color: tab === t.id ? T.accent : T.dim, borderBottom: `2px solid ${tab === t.id ? T.accent : "transparent"}`, transition: "all 0.15s" }}>{t.label}</button>))}</div>

@@ -253,25 +253,74 @@ function MLBKoreanTab({ onSave }) {
   const generate = async () => {
     setLoading(true); setResult(null); setExpandedChannel(null);
     try {
-      const dateQuery = customDate || "어제와 오늘";
+      // ── 1단계: MLB Stats API로 정확한 데이터 수집 ──
+      const dateParam = customDate
+        ? (() => {
+            const m = customDate.match(/(\d{1,2})월\s*(\d{1,2})일?/);
+            if (m) { const yr = new Date().getFullYear(); return `${yr}-${m[1].padStart(2,"0")}-${m[2].padStart(2,"0")}`; }
+            return customDate;
+          })()
+        : new Date(Date.now() - 14 * 60 * 60 * 1000).toISOString().split("T")[0]; // 한국시간 기준 전날 미국 날짜
+
+      const mlbRes = await fetch(`/api/mlb-stats?date=${dateParam}`);
+      const mlbData = await mlbRes.json();
+
+      if (!mlbData.success) throw new Error(mlbData.error || "MLB 데이터 수집 실패");
+
+      // ── 2단계: 수집된 데이터를 AI에게 전달 → 3채널 콘텐츠 생성 ──
+      const playerDataText = mlbData.players.length > 0
+        ? mlbData.players.map(p =>
+            `[${p.name}] ${p.team} / ${p.position}\n경기결과: ${p.game_result}\n당일성적: ${p.today_stats}\n시즌성적: ${p.season_stats}`
+          ).join("\n\n")
+        : "오늘 출전한 한국인 선수가 없습니다.";
+
+      const noGameText = mlbData.no_game_players.length > 0
+        ? `경기 없는 선수: ${mlbData.no_game_players.join(", ")}`
+        : "";
+
+      const CONTENT_SYSTEM = `당신은 스포츠 SNS 콘텐츠 크리에이터입니다.
+아래 제공된 MLB 한국인 선수 실제 경기 데이터를 바탕으로 3채널 포스팅을 생성하세요.
+데이터는 MLB 공식 API에서 가져온 정확한 수치입니다. 절대 수치를 변경하거나 지어내지 마세요.
+
+⚠️ 반드시 \`\`\`json 코드블록만 출력하세요. 설명 텍스트 금지.
+
+\`\`\`json
+{
+  "date": "${dateParam} (ET)",
+  "players": [선수별 { name, team, position, game_result, today_stats, season_stats, highlight } 배열],
+  "no_game_players": [${JSON.stringify(mlbData.no_game_players)}],
+  "youtube_shorts": { "title": "15자", "hook": "첫3초", "script": "60초TTS대본", "hashtags": [], "thumbnail_concept": "" },
+  "instagram": { "caption": "300자이모지", "hashtags": [], "card_text": "50자" },
+  "x_thread": { "tweets": ["280자이내트윗1","트윗2","트윗3"], "hashtags": [] },
+  "summary": "한줄총평"
+}
+\`\`\`
+한국어. 성적 좋으면 축하, 부진하면 응원.`;
+
       const raw = await callClaude(
-        [{ role: "user", content: `미국 동부시간(ET) 기준 ${dateQuery} MLB 경기에서 한국인 선수들의 성적을 검색해서 리포트를 만들어주세요.
+        [{ role: "user", content: `MLB 한국인 선수 ${dateParam}(ET) 경기 데이터입니다. 이 데이터를 바탕으로 3채널 콘텐츠를 만들어주세요.
 
-현재 MLB 로스터에 있는 한국인 선수만 검색하세요:
-김혜성, 이정후, 배지환, 김하성, 송성문 등 현재 MLB에서 뛰는 선수만.
+=== 선수별 성적 (MLB 공식 데이터) ===
+${playerDataText}
 
-⚠️ 류현진, 김광현, 김도영은 MLB에 없으니 절대 포함하지 마세요.
+${noGameText}
 
-날짜는 미국 동부시간(ET) 기준으로 표시해 주세요.
-반드시 웹 검색으로 최신 결과를 확인하세요.` }],
-        SYSTEM, 4000, SONNET
+위 수치를 정확히 사용해서 유튜브 쇼츠 대본, 인스타그램, X 스레드를 생성해주세요.` }],
+        CONTENT_SYSTEM, 4000, SONNET
       );
+
       let parsed;
       try {
         const codeBlock = raw.match(/```json\s*([\s\S]*?)```/);
         if (codeBlock) { parsed = JSON.parse(codeBlock[1].trim()); }
         else { const f = raw.indexOf("{"), l = raw.lastIndexOf("}"); parsed = (f !== -1 && l > f) ? JSON.parse(raw.substring(f, l + 1)) : { raw, parseError: true }; }
       } catch { parsed = { raw, parseError: true }; }
+
+      // MLB API 원본 데이터도 저장
+      if (parsed && !parsed.parseError) {
+        parsed._mlbApiData = { date: dateParam, players: mlbData.players, no_game_players: mlbData.no_game_players };
+      }
+
       setResult(parsed);
       const entry = { id: Date.now(), type: "mlb_korean", date: new Date().toISOString(), data: parsed };
       const history = JSON.parse(localStorage.getItem("dy_sports_history") || "[]");
@@ -638,7 +687,7 @@ function SettingsTab() {
       <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>앱 정보</div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 2, fontFamily: mono }}>
-          <div><span style={{ color: T.dim }}>앱:</span> Sports AI Agent v1.8</div>
+          <div><span style={{ color: T.dim }}>앱:</span> Sports AI Agent v1.9</div>
           <div><span style={{ color: T.dim }}>브랜드:</span> DoubleY Space</div>
           <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 (분석·MLB) / Haiku 4.5 (쇼츠)</div>
           <div><span style={{ color: T.dim }}>MLB:</span> 🇰🇷 유튜브 + X + 인스타 3채널</div>
@@ -670,7 +719,7 @@ export default function App() {
       <style>{CSS}</style>
       <div style={{ padding: "16px 20px 0", borderBottom: `1px solid ${T.border}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <div><div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5 }}><span style={{ color: T.accent }}>⚡</span> Sports AI</div><div style={{ fontSize: 10, fontFamily: mono, color: T.dim, marginTop: 2 }}>v1.8 | DoubleY Space</div></div>
+          <div><div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5 }}><span style={{ color: T.accent }}>⚡</span> Sports AI</div><div style={{ fontSize: 10, fontFamily: mono, color: T.dim, marginTop: 2 }}>v1.9 | DoubleY Space</div></div>
           <div style={{ fontSize: 10, fontFamily: mono, color: T.dim, textAlign: "right" }}>{new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", weekday: "short" })}</div>
         </div>
         <div style={{ display: "flex", gap: 0 }}>{tabs.map(t => (<button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: "10px 0", fontSize: 12, fontFamily: font, fontWeight: 600, cursor: "pointer", background: "none", border: "none", color: tab === t.id ? T.accent : T.dim, borderBottom: `2px solid ${tab === t.id ? T.accent : "transparent"}`, transition: "all 0.15s" }}>{t.label}</button>))}</div>

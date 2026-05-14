@@ -42,14 +42,13 @@ ${caption ? caption.substring(0, 100) : ""}
 디자인 참고: 숫자와 통계는 크게, 팀명은 볼드체로, 전체적으로 프로 스포츠 방송 그래픽 느낌으로.
 한글 텍스트를 정확하게 렌더링해주세요.`;
 
-  const res = await fetch(`${GEMINI_API}/models/gemini-2.5-flash-preview-image:generateContent?key=${geminiKey}`, {
+  const res = await fetch(`${GEMINI_API}/models/gemini-2.5-flash-preview-04-17:generateContent?key=${geminiKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
-        responseModalities: ["TEXT", "IMAGE"],
-        responseMimeType: "text/plain",
+        responseModalities: ["IMAGE", "TEXT"],
       },
     }),
   });

@@ -766,6 +766,181 @@ ${extra ? `추가 요청: ${extra}` : ""}
 }
 
 // ══════════════════════════════════════════════════════════════
+// KBO 직접 입력 탭 — 경기 결과를 직접 입력 → AI 콘텐츠 생성
+// ══════════════════════════════════════════════════════════════
+
+const KBO_TEAMS = ["KT", "LG", "SSG", "삼성", "두산", "KIA", "한화", "NC", "롯데", "키움"];
+
+function KBOTab({ onSave }) {
+  const [homeTeam, setHomeTeam] = useState("키움");
+  const [awayTeam, setAwayTeam] = useState("한화");
+  const [homeScore, setHomeScore] = useState("");
+  const [awayScore, setAwayScore] = useState("");
+  const [gameDate, setGameDate] = useState("");
+  const [stadium, setStadium] = useState("");
+  const [keyPlayers, setKeyPlayers] = useState("");
+  const [extra, setExtra] = useState("");
+  const [analysisType, setAnalysisType] = useState("review");
+  const [channels, setChannels] = useState({ blog: true, x: false, ig: false });
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [expandedChannel, setExpandedChannel] = useState(null);
+
+  const toggleChannel = (ch) => setChannels(prev => ({ ...prev, [ch]: !prev[ch] }));
+  const selectedCount = Object.values(channels).filter(Boolean).length;
+  const channelLabels = { blog: "📝 블로그", x: "𝕏 X", ig: "📸 인스타" };
+  const channelColors = { blog: "#03C75A", x: T.text, ig: "#E1306C" };
+
+  const buildSystem = () => {
+    let s = `당신은 KBO 전문 스포츠 분석가이자 SNS 콘텐츠 크리에이터입니다.
+
+사용자가 제공한 KBO 경기 데이터를 바탕으로 콘텐츠를 생성하세요.
+제공된 데이터(스코어, 선수명 등)는 정확한 팩트입니다. 절대 변경하지 마세요.
+추가 맥락이 필요하면 웹 검색으로 보충하세요.
+
+⚠️ 반드시 \`\`\`json 코드블록만 출력. 설명 텍스트 금지. 모든 값은 문자열.
+
+\`\`\`json
+{
+  "title": "콘텐츠 제목 (문자열)",
+  "summary": "한줄 총평 (문자열)"`;
+    if (channels.blog) s += `,
+  "naver_blog": { "title": "SEO 제목 (문자열)", "body": "본문 1500-2500자 (문자열)", "tags": ["태그"], "thumbnail_concept": "썸네일 (문자열)" }`;
+    if (channels.x) s += `,
+  "x_thread": { "tweets": ["트윗1 280자 (문자열)", "트윗2", "트윗3"], "hashtags": ["태그"] }`;
+    if (channels.ig) s += `,
+  "instagram": { "caption": "캡션 300자 (문자열)", "hashtags": ["태그"], "card_text": "카드 50자 (문자열)" }`;
+    s += `
+}
+\`\`\`
+한국어. 야구팬 관점 흥미로운 톤.`;
+    return s;
+  };
+
+  const typeLabels = { preview: "프리뷰", review: "리뷰", stats: "통계 심층", shorts: "쇼츠 대본", column: "칼럼" };
+
+  const generate = async () => {
+    if (selectedCount === 0) return;
+    setLoading(true); setResult(null); setExpandedChannel(null);
+    try {
+      const dateStr = gameDate || new Date().toLocaleDateString("ko-KR");
+      const matchTitle = `${awayTeam} vs ${homeTeam}`;
+      const scoreInfo = (homeScore && awayScore) ? `최종 스코어: ${awayTeam} ${awayScore} - ${homeScore} ${homeTeam} (${Number(homeScore) > Number(awayScore) ? homeTeam + " 승" : Number(awayScore) > Number(homeScore) ? awayTeam + " 승" : "무승부"})` : "스코어 미입력 (프리뷰)";
+
+      const prompt = `KBO 경기 정보:
+날짜: ${dateStr}
+경기: ${matchTitle}
+${stadium ? `구장: ${stadium}` : ""}
+${scoreInfo}
+${keyPlayers ? `주요 선수/이벤트: ${keyPlayers}` : ""}
+분석 유형: ${typeLabels[analysisType]}
+${extra ? `추가: ${extra}` : ""}
+
+위 팩트를 정확히 사용해서 콘텐츠를 생성해주세요.`;
+
+      const raw = await callClaude(
+        [{ role: "user", content: prompt }],
+        buildSystem(), 4000, analysisType === "shorts" ? HAIKU : SONNET
+      );
+
+      let parsed;
+      try {
+        const cb = raw.match(/```json\s*([\s\S]*?)```/);
+        if (cb) { parsed = JSON.parse(cb[1].trim()); }
+        else { const f = raw.indexOf("{"), l = raw.lastIndexOf("}"); parsed = (f !== -1 && l > f) ? JSON.parse(raw.substring(f, l + 1)) : { raw, parseError: true }; }
+      } catch { parsed = { raw, parseError: true }; }
+
+      setResult(parsed);
+      const entry = { id: Date.now(), type: "kbo_input", sport: "baseball", league: "KBO", matchInfo: matchTitle, analysisType, channels, data: parsed, date: new Date().toISOString() };
+      const h = JSON.parse(localStorage.getItem("dy_sports_history") || "[]");
+      h.unshift(entry); if (h.length > 50) h.pop();
+      localStorage.setItem("dy_sports_history", JSON.stringify(h));
+      if (onSave) onSave();
+    } catch (e) { setResult({ error: e.message }); }
+    setLoading(false);
+  };
+
+  const toggle = (ch) => setExpandedChannel(expandedChannel === ch ? null : ch);
+
+  return (
+    <div style={{ padding: "16px 0" }}>
+      {/* 팀 선택 */}
+      <div style={{ marginBottom: 14 }}>
+        <SectionLabel>MATCH</SectionLabel>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, color: T.dim, marginBottom: 4 }}>원정</div>
+            <select value={awayTeam} onChange={e => setAwayTeam(e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: 8, background: T.surface2, border: `1px solid ${T.border}`, color: T.text, fontSize: 14, fontFamily: font }}>
+              {KBO_TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: T.dim, paddingTop: 16 }}>vs</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, color: T.dim, marginBottom: 4 }}>홈</div>
+            <select value={homeTeam} onChange={e => setHomeTeam(e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: 8, background: T.surface2, border: `1px solid ${T.border}`, color: T.text, fontSize: 14, fontFamily: font }}>
+              {KBO_TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* 스코어 */}
+      <div style={{ marginBottom: 14 }}>
+        <SectionLabel>SCORE (리뷰 시 입력)</SectionLabel>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input value={awayScore} onChange={e => setAwayScore(e.target.value)} placeholder={awayTeam} style={{ flex: 1, padding: "10px", borderRadius: 8, background: T.surface2, border: `1px solid ${T.border}`, color: T.text, fontSize: 18, fontFamily: mono, textAlign: "center", outline: "none" }} />
+          <span style={{ fontSize: 16, fontWeight: 800, color: T.dim }}>:</span>
+          <input value={homeScore} onChange={e => setHomeScore(e.target.value)} placeholder={homeTeam} style={{ flex: 1, padding: "10px", borderRadius: 8, background: T.surface2, border: `1px solid ${T.border}`, color: T.text, fontSize: 18, fontFamily: mono, textAlign: "center", outline: "none" }} />
+        </div>
+      </div>
+
+      {/* 날짜/구장 */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <div style={{ flex: 1 }}><SectionLabel>DATE</SectionLabel><input value={gameDate} onChange={e => setGameDate(e.target.value)} placeholder="5월 14일" style={{ width: "100%", padding: "9px 12px", borderRadius: 6, background: T.surface2, border: `1px solid ${T.border}`, color: T.text, fontSize: 12, fontFamily: font, outline: "none" }} /></div>
+        <div style={{ flex: 1 }}><SectionLabel>STADIUM</SectionLabel><input value={stadium} onChange={e => setStadium(e.target.value)} placeholder="고척스카이돔" style={{ width: "100%", padding: "9px 12px", borderRadius: 6, background: T.surface2, border: `1px solid ${T.border}`, color: T.text, fontSize: 12, fontFamily: font, outline: "none" }} /></div>
+      </div>
+
+      {/* 주요 선수/이벤트 */}
+      <div style={{ marginBottom: 14 }}><SectionLabel>KEY PLAYERS / EVENTS</SectionLabel><textarea value={keyPlayers} onChange={e => setKeyPlayers(e.target.value)} placeholder="예: 박정훈 데뷔 첫 선발승, 노시환 3안타..." rows={2} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: T.surface2, border: `1px solid ${T.border}`, color: T.text, fontSize: 12, fontFamily: font, outline: "none", resize: "none" }} /></div>
+
+      {/* 분석 유형 */}
+      <div style={{ marginBottom: 14 }}><SectionLabel>TYPE</SectionLabel><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{ANALYSIS_TYPES.map(a => <Chip key={a.id} active={analysisType === a.id} onClick={() => setAnalysisType(a.id)} color={T.gold}>{a.icon} {a.label.replace(/^.+ /,"")}</Chip>)}</div></div>
+
+      {/* 추가 요청 */}
+      <div style={{ marginBottom: 14 }}><SectionLabel>EXTRA</SectionLabel><textarea value={extra} onChange={e => setExtra(e.target.value)} placeholder="추가 요청..." rows={1} style={{ width: "100%", padding: "9px 12px", borderRadius: 8, background: T.surface2, border: `1px solid ${T.border}`, color: T.text, fontSize: 12, fontFamily: font, outline: "none", resize: "none" }} /></div>
+
+      {/* 채널 선택 */}
+      <div style={{ marginBottom: 14 }}>
+        <SectionLabel>CHANNEL</SectionLabel>
+        <div style={{ display: "flex", gap: 6 }}>
+          {Object.entries(channelLabels).map(([k, label]) => (
+            <button key={k} onClick={() => toggleChannel(k)} style={{ flex: 1, padding: "10px 8px", borderRadius: 8, fontSize: 11, fontFamily: font, fontWeight: 600, cursor: "pointer", border: `1.5px solid ${channels[k] ? channelColors[k] : T.border}`, background: channels[k] ? `${channelColors[k]}15` : "transparent", color: channels[k] ? channelColors[k] : T.dim }}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      <Btn onClick={generate} disabled={loading || selectedCount === 0} full>
+        {loading ? <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⚾</span> 생성 중...</> : <>⚾ {selectedCount}채널 KBO 분석 생성</>}
+      </Btn>
+
+      {/* Results - 동일한 결과 렌더링 */}
+      {result?.error && <div style={{ marginTop: 12, padding: 14, background: T.redDim, borderRadius: 10, border: `1px solid ${T.red}33`, fontSize: 12, color: T.red, whiteSpace: "pre-wrap", lineHeight: 1.7 }}>❌ {result.error}</div>}
+      {result?.parseError && <div style={{ marginTop: 12, padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}><SectionLabel>RAW</SectionLabel><CopyBtn text={result.raw} /></div><div style={{ fontSize: 13, color: T.text, lineHeight: 1.9, whiteSpace: "pre-wrap" }}>{result.raw}</div></div>}
+      {result && !result.error && !result.parseError && (
+        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+          {result.title && <div style={{ fontSize: 16, fontWeight: 800, color: T.text }}>{safeStr(result.title)}</div>}
+          {result.summary && <div style={{ padding: "12px 16px", background: T.accentDim, borderRadius: 8, border: `1px solid ${T.accent}25`, fontSize: 13, fontWeight: 600, color: T.accent }}>💬 {safeStr(result.summary)}</div>}
+          <SectionLabel>채널별 포스팅</SectionLabel>
+          {result.naver_blog && <ChannelCard icon="📝" label="네이버 블로그" color="#03C75A" expanded={expandedChannel === "blog"} onToggle={() => toggle("blog")} copyText={`${safeStr(result.naver_blog.title)}\n\n${safeStr(result.naver_blog.body)}\n\n${(result.naver_blog.tags||[]).map(h=>`#${h}`).join(" ")}`}><div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>TITLE</div><div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{safeStr(result.naver_blog.title)}</div></div><div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>BODY</div><div style={{ fontSize: 13, color: T.text, lineHeight: 2, whiteSpace: "pre-wrap", padding: 14, background: T.surface2, borderRadius: 8, maxHeight: 400, overflowY: "auto" }}>{safeStr(result.naver_blog.body)}</div></div><TagList tags={result.naver_blog.tags} /></ChannelCard>}
+          {result.x_thread && <ChannelCard icon="𝕏" label="X Thread" color={T.text} expanded={expandedChannel === "x"} onToggle={() => toggle("x")} copyText={(result.x_thread.tweets||[]).map((t,i)=>`${i+1}/${result.x_thread.tweets.length} ${safeStr(t)}`).join("\n\n")}><div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 8 }}>THREAD · {result.x_thread.tweets?.length}트윗</div>{(result.x_thread.tweets||[]).map((tweet,i)=>(<div key={i} style={{ padding: "10px 14px", marginBottom: 6, background: T.surface2, borderRadius: 8, borderLeft: `3px solid ${i===0?T.accent:T.border}` }}><div style={{ fontSize: 9, color: T.dim, fontFamily: mono, marginBottom: 4 }}>{i+1}/{result.x_thread.tweets.length}</div><div style={{ fontSize: 12, color: T.text, lineHeight: 1.7 }}>{safeStr(tweet)}</div></div>))}</div><TagList tags={result.x_thread.hashtags} /><PostToXBtn tweets={result.x_thread.tweets} hashtags={result.x_thread.hashtags} /></ChannelCard>}
+          {result.instagram && <ChannelCard icon="📸" label="Instagram" color="#E1306C" expanded={expandedChannel === "ig"} onToggle={() => toggle("ig")} copyText={`${safeStr(result.instagram.caption)}\n\n${(result.instagram.hashtags||[]).map(h=>`#${h}`).join(" ")}`}>{result.instagram.card_text && <div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>CARD TEXT</div><div style={{ fontSize: 16, fontWeight: 800, color: T.text, padding: 14, background: T.surface2, borderRadius: 8, textAlign: "center" }}>{safeStr(result.instagram.card_text)}</div></div>}<div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>CAPTION</div><div style={{ fontSize: 12, color: T.text, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{safeStr(result.instagram.caption)}</div></div><TagList tags={result.instagram.hashtags} /></ChannelCard>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
 // TAB 3: 히스토리
 // ══════════════════════════════════════════════════════════════
 
@@ -822,11 +997,11 @@ function SettingsTab() {
       <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>앱 정보</div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 2, fontFamily: mono }}>
-          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v2.3</div>
+          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v2.4</div>
           <div><span style={{ color: T.dim }}>브랜드:</span> DoubleY Space</div>
-          <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 (분석·MLB) / Haiku 4.5 (쇼츠)</div>
-          <div><span style={{ color: T.dim }}>탭:</span> 🇰🇷MLB / ⚾KBO / 🏀NBA / ⚽축구</div>
-          <div><span style={{ color: T.dim }}>채널:</span> 네이버블로그 + X + 인스타 선택</div>
+          <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 / Haiku 4.5</div>
+          <div><span style={{ color: T.dim }}>탭:</span> 🇰🇷MLB / ⚾KBO / 🏀NBA / 🏈NFL / ⚽축구</div>
+          <div><span style={{ color: T.dim }}>채널:</span> 블로그 + X + 인스타 선택</div>
         </div>
       </div>
     </div>
@@ -851,6 +1026,7 @@ export default function App() {
     { id: "mlb", label: "🇰🇷 MLB" },
     { id: "kbo", label: "⚾ KBO" },
     { id: "nba", label: "🏀 NBA" },
+    { id: "nfl", label: "🏈 NFL" },
     { id: "football", label: "⚽ 축구" },
     { id: "history", label: "📂" },
     { id: "settings", label: "⚙️" },
@@ -886,8 +1062,9 @@ export default function App() {
       </div>
       <div style={{ padding: "0 20px 40px", animation: "fadeUp 0.3s ease" }}>
         {tab === "mlb" && <MLBKoreanTab onSave={() => forceUpdate(n => n + 1)} />}
-        {tab === "kbo" && <AnalysisTab key="kbo" onSave={() => forceUpdate(n => n + 1)} preset={{ sport: "baseball", leagues: ["KBO"] }} />}
+        {tab === "kbo" && <KBOTab onSave={() => forceUpdate(n => n + 1)} />}
         {tab === "nba" && <AnalysisTab key="nba" onSave={() => forceUpdate(n => n + 1)} preset={{ sport: "basketball", leagues: ["NBA"] }} />}
+        {tab === "nfl" && <AnalysisTab key="nfl" onSave={() => forceUpdate(n => n + 1)} preset={{ sport: "football", leagues: ["NFL"] }} />}
         {tab === "football" && <AnalysisTab key="football" onSave={() => forceUpdate(n => n + 1)} preset={{ sport: "soccer", leagues: ["EPL", "라리가", "K리그", "챔피언스리그", "분데스리가", "국가대표"] }} />}
         {tab === "history" && <HistoryTab />}
         {tab === "settings" && <SettingsTab />}

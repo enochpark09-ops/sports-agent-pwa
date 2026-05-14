@@ -18,7 +18,7 @@ const font = "'Outfit', 'Pretendard', sans-serif";
 const mono = "'IBM Plex Mono', monospace";
 
 const SPORTS = [
-  { id: "soccer", label: "⚽ 축구", leagues: ["EPL", "라리가", "K리그", "챔피언스리그", "분데스리가"] },
+  { id: "soccer", label: "⚽ 축구", leagues: ["EPL", "라리가", "K리그", "챔피언스리그", "분데스리가", "국가대표"] },
   { id: "baseball", label: "⚾ 야구", leagues: ["MLB", "KBO", "NPB"] },
   { id: "basketball", label: "🏀 농구", leagues: ["NBA", "KBL"] },
   { id: "football", label: "🏈 미식축구", leagues: ["NFL", "NCAA"] },
@@ -540,20 +540,32 @@ ${noGameText}
 // TAB 2: ⚡ 분석
 // ══════════════════════════════════════════════════════════════
 
-function AnalysisTab({ onSave }) {
-  const [sport, setSport] = useState("soccer");
+function AnalysisTab({ onSave, preset }) {
+  // preset이 있으면 종목/리그 고정, 없으면 자유 선택
+  const fixedSport = preset?.sport || null;
+  const fixedLeagues = preset?.leagues || null;
+  const [sport, setSport] = useState(fixedSport || "soccer");
   const [league, setLeague] = useState("");
   const [matchInfo, setMatchInfo] = useState("");
   const [analysisType, setAnalysisType] = useState("preview");
   const [extra, setExtra] = useState("");
+  const [channels, setChannels] = useState({ blog: true, x: false, ig: false });
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [expandedChannel, setExpandedChannel] = useState(null);
-  const sel = SPORTS.find(s => s.id === sport);
+  const sel = fixedSport ? { id: fixedSport, label: SPORTS.find(s => s.id === fixedSport)?.label || fixedSport, leagues: fixedLeagues || SPORTS.find(s => s.id === fixedSport)?.leagues || [] } : SPORTS.find(s => s.id === sport);
 
-  const SYSTEM = `당신은 전문 스포츠 분석가이자 SNS 콘텐츠 크리에이터입니다.
+  const toggleChannel = (ch) => setChannels(prev => ({ ...prev, [ch]: !prev[ch] }));
+  const selectedCount = Object.values(channels).filter(Boolean).length;
 
-**임무:** 주어진 스포츠 경기/주제를 웹 검색으로 조사하고, 3개 채널(네이버 블로그, X/트위터 스레드, 인스타그램)용 콘텐츠를 한 번에 생성합니다.
+  const channelLabels = { blog: "📝 네이버 블로그", x: "𝕏 X 스레드", ig: "📸 인스타그램" };
+  const channelColors = { blog: "#03C75A", x: T.text, ig: "#E1306C" };
+
+  const buildSystemPrompt = () => {
+    const parts = [];
+    parts.push(`당신은 전문 스포츠 분석가이자 SNS 콘텐츠 크리에이터입니다.
+
+**임무:** 주어진 스포츠 경기/주제를 웹 검색으로 조사하고, 선택된 채널용 콘텐츠를 생성합니다.
 
 **분석 유형별 톤:**
 - 프리뷰: 경기 전 전술 분석, 예측, 관전 포인트
@@ -564,52 +576,66 @@ function AnalysisTab({ onSave }) {
 
 **반드시 웹 검색으로 최신 정보를 확인한 후 작성하세요.**
 
-**출력 형식 — 반드시 아래 JSON만 출력. 설명 문장 금지:**
+⚠️ 반드시 \\\`\\\`\\\`json 코드블록만 출력하세요. 설명 텍스트 금지.
 
-\`\`\`json
+\\\`\\\`\\\`json
 {
-  "title": "콘텐츠 제목",
-  "sport": "종목",
-  "league": "리그",
-  "type": "분석유형",
-  "naver_blog": {
-    "title": "블로그 제목 (SEO 최적화, 검색 유입용)",
-    "body": "블로그 본문 (1500-2500자, 소제목 포함, 네이버 블로그 스타일. 줄바꿈은 \\n으로. 이모지 적절히 활용. 소제목은 ■ 기호 사용)",
-    "tags": ["태그1", "태그2", "태그3"],
-    "thumbnail_concept": "대표 이미지 컨셉"
-  },
-  "x_thread": {
-    "tweets": ["트윗1 (280자 이내)", "트윗2", "트윗3", "트윗4"],
-    "hashtags": ["태그1", "태그2"]
-  },
-  "instagram": {
-    "caption": "인스타그램 캡션 (이모지 포함, 300자 내외)",
-    "hashtags": ["태그1", "태그2"],
-    "card_text": "카드뉴스 메인 텍스트 (50자 이내)"
-  },
-  "summary": "한줄 총평"
-}
-\`\`\`
+  "title": "콘텐츠 제목 (문자열)",
+  "summary": "한줄 총평 (문자열)"`);
 
-한국어로 작성. 팬 관점에서 흥미로운 톤. 각 채널별 최적화된 포맷으로.`;
+    if (channels.blog) {
+      parts.push(`,
+  "naver_blog": {
+    "title": "블로그 제목 SEO 최적화 (문자열)",
+    "body": "블로그 본문 1500-2500자, 소제목 ■ 기호, 줄바꿈은 \\\\n (문자열)",
+    "tags": ["태그1", "태그2"],
+    "thumbnail_concept": "대표 이미지 컨셉 (문자열)"
+  }`);
+    }
+    if (channels.x) {
+      parts.push(`,
+  "x_thread": {
+    "tweets": ["트윗1 280자이내 (문자열)", "트윗2", "트윗3"],
+    "hashtags": ["태그1", "태그2"]
+  }`);
+    }
+    if (channels.ig) {
+      parts.push(`,
+  "instagram": {
+    "caption": "캡션 300자 이모지 포함 (문자열)",
+    "hashtags": ["태그1", "태그2"],
+    "card_text": "카드뉴스 메인 50자 (문자열)"
+  }`);
+    }
+
+    parts.push(`
+}
+\\\`\\\`\\\`
+
+한국어 작성. 모든 값은 반드시 문자열(string)로. 객체 금지.`);
+
+    return parts.join("");
+  };
 
   const typeLabels = { preview: "프리뷰", review: "리뷰", stats: "통계 심층", shorts: "쇼츠 대본", column: "칼럼" };
 
   const generate = async () => {
-    if (!matchInfo.trim()) return;
+    if (!matchInfo.trim() || selectedCount === 0) return;
     setLoading(true); setResult(null); setExpandedChannel(null);
     try {
+      const chNames = Object.entries(channels).filter(([,v]) => v).map(([k]) => channelLabels[k]).join(" + ");
       const prompt = `종목: ${sel?.label || sport}
 리그: ${league || "미지정"}
 경기/주제: ${matchInfo}
 분석 유형: ${typeLabels[analysisType]}
+생성 채널: ${chNames}
 ${extra ? `추가 요청: ${extra}` : ""}
 
-위 정보를 바탕으로 웹 검색 후 3채널 콘텐츠를 생성해주세요.`;
+위 정보를 바탕으로 웹 검색 후 콘텐츠를 생성해주세요.`;
 
       const raw = await callClaude(
         [{ role: "user", content: prompt }],
-        SYSTEM, 4000, analysisType === "shorts" ? HAIKU : SONNET
+        buildSystemPrompt(), 4000, analysisType === "shorts" ? HAIKU : SONNET
       );
 
       let parsed;
@@ -621,7 +647,7 @@ ${extra ? `추가 요청: ${extra}` : ""}
 
       setResult(parsed);
 
-      const entry = { id: Date.now(), type: "analysis_3ch", sport, league, matchInfo, analysisType, data: parsed, date: new Date().toISOString() };
+      const entry = { id: Date.now(), type: "analysis_3ch", sport, league, matchInfo, analysisType, channels, data: parsed, date: new Date().toISOString() };
       const h = JSON.parse(localStorage.getItem("dy_sports_history") || "[]");
       h.unshift(entry);
       if (h.length > 50) h.pop();
@@ -635,24 +661,43 @@ ${extra ? `추가 요청: ${extra}` : ""}
 
   return (
     <div style={{ padding: "16px 0" }}>
-      {/* Sport */}
-      <div style={{ marginBottom: 16 }}><SectionLabel>SPORT</SectionLabel><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{SPORTS.map(s => <Chip key={s.id} active={sport === s.id} onClick={() => { setSport(s.id); setLeague(""); }}>{s.label}</Chip>)}</div></div>
+      {/* Sport - preset이 없을 때만 표시 */}
+      {!fixedSport && <div style={{ marginBottom: 16 }}><SectionLabel>SPORT</SectionLabel><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{SPORTS.map(s => <Chip key={s.id} active={sport === s.id} onClick={() => { setSport(s.id); setLeague(""); }}>{s.label}</Chip>)}</div></div>}
       {/* League */}
-      {sel && <div style={{ marginBottom: 16 }}><SectionLabel>LEAGUE</SectionLabel><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{sel.leagues.map(l => <Chip key={l} active={league === l} onClick={() => setLeague(league === l ? "" : l)} color={T.blue}>{l}</Chip>)}</div></div>}
+      {sel && sel.leagues.length > 0 && !fixedSport && <div style={{ marginBottom: 16 }}><SectionLabel>LEAGUE</SectionLabel><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{sel.leagues.map(l => <Chip key={l} active={league === l} onClick={() => setLeague(league === l ? "" : l)} color={T.blue}>{l}</Chip>)}</div></div>}
+      {/* League - preset이 있고 리그가 여러개면 선택 가능 */}
+      {fixedSport && fixedLeagues && fixedLeagues.length > 1 && <div style={{ marginBottom: 16 }}><SectionLabel>LEAGUE</SectionLabel><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{fixedLeagues.map(l => <Chip key={l} active={league === l} onClick={() => setLeague(league === l ? "" : l)} color={T.blue}>{l}</Chip>)}</div></div>}
       {/* Type */}
       <div style={{ marginBottom: 16 }}><SectionLabel>TYPE</SectionLabel><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{ANALYSIS_TYPES.map(a => <Chip key={a.id} active={analysisType === a.id} onClick={() => setAnalysisType(a.id)} color={T.gold}>{a.icon} {a.label.replace(/^.+ /,"")}</Chip>)}</div></div>
       {/* Match */}
       <div style={{ marginBottom: 12 }}><SectionLabel>MATCH / TOPIC</SectionLabel><input value={matchInfo} onChange={e => setMatchInfo(e.target.value)} placeholder="예: 맨시티 vs 아스널, 손흥민 시즌 분석" style={{ width: "100%", padding: "12px 14px", borderRadius: 8, background: T.surface2, border: `1px solid ${T.border}`, color: T.text, fontSize: 14, fontFamily: font, outline: "none" }} /></div>
       {/* Extra */}
       <div style={{ marginBottom: 16 }}><SectionLabel>EXTRA</SectionLabel><textarea value={extra} onChange={e => setExtra(e.target.value)} placeholder="추가 요청..." rows={2} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, background: T.surface2, border: `1px solid ${T.border}`, color: T.text, fontSize: 12, fontFamily: font, outline: "none", resize: "none" }} /></div>
-      {/* Generate */}
-      <div style={{ padding: "10px 14px", background: T.surface, borderRadius: 8, border: `1px solid ${T.border}`, marginBottom: 12, fontSize: 11, color: T.muted }}>
-        📢 3채널 동시 생성: <span style={{ color: "#03C75A", fontWeight: 700 }}>네이버 블로그</span> + <span style={{ fontWeight: 700, color: T.text }}>𝕏 스레드</span> + <span style={{ color: "#E1306C", fontWeight: 700 }}>인스타그램</span>
+
+      {/* Channel Select */}
+      <div style={{ marginBottom: 16 }}>
+        <SectionLabel>CHANNEL (선택)</SectionLabel>
+        <div style={{ display: "flex", gap: 6 }}>
+          {Object.entries(channelLabels).map(([k, label]) => (
+            <button key={k} onClick={() => toggleChannel(k)} style={{
+              flex: 1, padding: "10px 8px", borderRadius: 8, fontSize: 11,
+              fontFamily: font, fontWeight: 600, cursor: "pointer",
+              border: `1.5px solid ${channels[k] ? channelColors[k] : T.border}`,
+              background: channels[k] ? `${channelColors[k]}15` : "transparent",
+              color: channels[k] ? channelColors[k] : T.dim,
+              transition: "all 0.15s",
+            }}>{label}</button>
+          ))}
+        </div>
+        {selectedCount === 0 && <div style={{ fontSize: 10, color: T.red, marginTop: 6 }}>최소 1개 채널을 선택하세요</div>}
       </div>
-      <Btn onClick={generate} disabled={loading || !matchInfo.trim()} full>{loading ? <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⚡</span> 3채널 콘텐츠 생성 중...</> : <>⚡ 3채널 분석 생성</>}</Btn>
+
+      <Btn onClick={generate} disabled={loading || !matchInfo.trim() || selectedCount === 0} full>
+        {loading ? <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⚡</span> 콘텐츠 생성 중...</> : <>⚡ {selectedCount}채널 분석 생성</>}
+      </Btn>
 
       {/* Error */}
-      {result?.error && <div style={{ marginTop: 12, padding: 14, background: T.redDim, borderRadius: 10, border: `1px solid ${T.red}33`, fontSize: 12, color: T.red }}>❌ {result.error}</div>}
+      {result?.error && <div style={{ marginTop: 12, padding: 14, background: T.redDim, borderRadius: 10, border: `1px solid ${T.red}33`, fontSize: 12, color: T.red, whiteSpace: "pre-wrap", lineHeight: 1.7 }}>❌ {result.error}</div>}
 
       {/* Raw fallback */}
       {result?.parseError && (
@@ -665,49 +710,38 @@ ${extra ? `추가 요청: ${extra}` : ""}
       {/* Structured Result */}
       {result && !result.error && !result.parseError && (
         <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-          {/* Title & Summary */}
           {result.title && <div style={{ fontSize: 16, fontWeight: 800, color: T.text }}>{safeStr(result.title)}</div>}
           {result.summary && <div style={{ padding: "12px 16px", background: T.accentDim, borderRadius: 8, border: `1px solid ${T.accent}25`, fontSize: 13, fontWeight: 600, color: T.accent }}>💬 {safeStr(result.summary)}</div>}
 
-          <SectionLabel>3채널 포스팅</SectionLabel>
+          <SectionLabel>채널별 포스팅</SectionLabel>
 
           {/* Naver Blog */}
           {result.naver_blog && (
             <ChannelCard icon="📝" label="네이버 블로그" color="#03C75A" expanded={expandedChannel === "blog"} onToggle={() => toggle("blog")}
-              copyText={`${result.naver_blog.title}\n\n${result.naver_blog.body}\n\n${(result.naver_blog.tags || []).map(h => `#${h}`).join(" ")}`}>
+              copyText={`${safeStr(result.naver_blog.title)}\n\n${safeStr(result.naver_blog.body)}\n\n${(result.naver_blog.tags || []).map(h => `#${h}`).join(" ")}`}>
               <div style={{ marginBottom: 10 }}>
                 <div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>TITLE (SEO)</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{result.naver_blog.title}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{safeStr(result.naver_blog.title)}</div>
               </div>
               <div style={{ marginBottom: 10 }}>
                 <div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>BODY</div>
-                <div style={{
-                  fontSize: 13, color: T.text, lineHeight: 2, whiteSpace: "pre-wrap",
-                  padding: "14px", background: T.surface2, borderRadius: 8,
-                  maxHeight: 400, overflowY: "auto",
-                }}>{result.naver_blog.body}</div>
+                <div style={{ fontSize: 13, color: T.text, lineHeight: 2, whiteSpace: "pre-wrap", padding: "14px", background: T.surface2, borderRadius: 8, maxHeight: 400, overflowY: "auto" }}>{safeStr(result.naver_blog.body)}</div>
               </div>
-              {result.naver_blog.thumbnail_concept && (
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>THUMBNAIL</div>
-                  <div style={{ fontSize: 11, color: T.muted }}>{result.naver_blog.thumbnail_concept}</div>
-                </div>
-              )}
+              {result.naver_blog.thumbnail_concept && <div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>THUMBNAIL</div><div style={{ fontSize: 11, color: T.muted }}>{safeStr(result.naver_blog.thumbnail_concept)}</div></div>}
               <TagList tags={result.naver_blog.tags} />
-              <PostToNaverBtn title={result.naver_blog.title} body={result.naver_blog.body} tags={result.naver_blog.tags} />
             </ChannelCard>
           )}
 
           {/* X Thread */}
           {result.x_thread && (
             <ChannelCard icon="𝕏" label="X Thread" color={T.text} expanded={expandedChannel === "x"} onToggle={() => toggle("x")}
-              copyText={(result.x_thread.tweets || []).map((t, i) => `${i + 1}/${result.x_thread.tweets.length} ${t}`).join("\n\n")}>
+              copyText={(result.x_thread.tweets || []).map((t, i) => `${i + 1}/${result.x_thread.tweets.length} ${safeStr(t)}`).join("\n\n")}>
               <div style={{ marginBottom: 10 }}>
                 <div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 8 }}>THREAD · {result.x_thread.tweets?.length}트윗</div>
                 {(result.x_thread.tweets || []).map((tweet, i) => (
                   <div key={i} style={{ padding: "10px 14px", marginBottom: 6, background: T.surface2, borderRadius: 8, borderLeft: `3px solid ${i === 0 ? T.accent : T.border}` }}>
                     <div style={{ fontSize: 9, color: T.dim, fontFamily: mono, marginBottom: 4 }}>{i + 1}/{result.x_thread.tweets.length}</div>
-                    <div style={{ fontSize: 12, color: T.text, lineHeight: 1.7 }}>{tweet}</div>
+                    <div style={{ fontSize: 12, color: T.text, lineHeight: 1.7 }}>{safeStr(tweet)}</div>
                   </div>
                 ))}
               </div>
@@ -719,17 +753,9 @@ ${extra ? `추가 요청: ${extra}` : ""}
           {/* Instagram */}
           {result.instagram && (
             <ChannelCard icon="📸" label="Instagram" color="#E1306C" expanded={expandedChannel === "ig"} onToggle={() => toggle("ig")}
-              copyText={`${result.instagram.caption}\n\n${(result.instagram.hashtags || []).map(h => `#${h}`).join(" ")}`}>
-              {result.instagram.card_text && (
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>CARD TEXT</div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: T.text, padding: 14, background: T.surface2, borderRadius: 8, textAlign: "center", lineHeight: 1.5 }}>{result.instagram.card_text}</div>
-                </div>
-              )}
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>CAPTION</div>
-                <div style={{ fontSize: 12, color: T.text, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{result.instagram.caption}</div>
-              </div>
+              copyText={`${safeStr(result.instagram.caption)}\n\n${(result.instagram.hashtags || []).map(h => `#${h}`).join(" ")}`}>
+              {result.instagram.card_text && <div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>CARD TEXT</div><div style={{ fontSize: 16, fontWeight: 800, color: T.text, padding: 14, background: T.surface2, borderRadius: 8, textAlign: "center", lineHeight: 1.5 }}>{safeStr(result.instagram.card_text)}</div></div>}
+              <div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>CAPTION</div><div style={{ fontSize: 12, color: T.text, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{safeStr(result.instagram.caption)}</div></div>
               <TagList tags={result.instagram.hashtags} />
             </ChannelCard>
           )}
@@ -796,11 +822,11 @@ function SettingsTab() {
       <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>앱 정보</div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 2, fontFamily: mono }}>
-          <div><span style={{ color: T.dim }}>앱:</span> Sports AI Agent v2.1</div>
+          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v2.3</div>
           <div><span style={{ color: T.dim }}>브랜드:</span> DoubleY Space</div>
           <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 (분석·MLB) / Haiku 4.5 (쇼츠)</div>
-          <div><span style={{ color: T.dim }}>MLB:</span> 🇰🇷 유튜브 + X + 인스타 3채널</div>
-          <div><span style={{ color: T.dim }}>분석:</span> ⚡ 네이버블로그 + X + 인스타 3채널</div>
+          <div><span style={{ color: T.dim }}>탭:</span> 🇰🇷MLB / ⚾KBO / 🏀NBA / ⚽축구</div>
+          <div><span style={{ color: T.dim }}>채널:</span> 네이버블로그 + X + 인스타 선택</div>
         </div>
       </div>
     </div>
@@ -821,7 +847,14 @@ const CSS = `
 export default function App() {
   const [tab, setTab] = useState("mlb");
   const [, forceUpdate] = useState(0);
-  const tabs = [{ id: "mlb", label: "🇰🇷 MLB" }, { id: "analysis", label: "⚡ 분석" }, { id: "history", label: "📂" }, { id: "settings", label: "⚙️" }];
+  const tabs = [
+    { id: "mlb", label: "🇰🇷 MLB" },
+    { id: "kbo", label: "⚾ KBO" },
+    { id: "nba", label: "🏀 NBA" },
+    { id: "football", label: "⚽ 축구" },
+    { id: "history", label: "📂" },
+    { id: "settings", label: "⚙️" },
+  ];
 
   // 네이버 OAuth 콜백 토큰 저장
   useEffect(() => {
@@ -846,14 +879,16 @@ export default function App() {
       <style>{CSS}</style>
       <div style={{ padding: "16px 20px 0", borderBottom: `1px solid ${T.border}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <div><div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5 }}><span style={{ color: T.accent }}>⚡</span> Sports AI</div><div style={{ fontSize: 10, fontFamily: mono, color: T.dim, marginTop: 2 }}>v2.1 | DoubleY Space</div></div>
+          <div><div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.5 }}><span style={{ color: T.accent }}>⚡</span> EdgeStats</div><div style={{ fontSize: 10, fontFamily: mono, color: T.dim, marginTop: 2 }}>v2.3 | DoubleY Space</div></div>
           <div style={{ fontSize: 10, fontFamily: mono, color: T.dim, textAlign: "right" }}>{new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", weekday: "short" })}</div>
         </div>
-        <div style={{ display: "flex", gap: 0 }}>{tabs.map(t => (<button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: "10px 0", fontSize: 12, fontFamily: font, fontWeight: 600, cursor: "pointer", background: "none", border: "none", color: tab === t.id ? T.accent : T.dim, borderBottom: `2px solid ${tab === t.id ? T.accent : "transparent"}`, transition: "all 0.15s" }}>{t.label}</button>))}</div>
+        <div style={{ display: "flex", gap: 0 }}>{tabs.map(t => (<button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, padding: "10px 0", fontSize: t.label.length > 3 ? 11 : 12, fontFamily: font, fontWeight: 600, cursor: "pointer", background: "none", border: "none", color: tab === t.id ? T.accent : T.dim, borderBottom: `2px solid ${tab === t.id ? T.accent : "transparent"}`, transition: "all 0.15s" }}>{t.label}</button>))}</div>
       </div>
       <div style={{ padding: "0 20px 40px", animation: "fadeUp 0.3s ease" }}>
         {tab === "mlb" && <MLBKoreanTab onSave={() => forceUpdate(n => n + 1)} />}
-        {tab === "analysis" && <AnalysisTab onSave={() => forceUpdate(n => n + 1)} />}
+        {tab === "kbo" && <AnalysisTab key="kbo" onSave={() => forceUpdate(n => n + 1)} preset={{ sport: "baseball", leagues: ["KBO"] }} />}
+        {tab === "nba" && <AnalysisTab key="nba" onSave={() => forceUpdate(n => n + 1)} preset={{ sport: "basketball", leagues: ["NBA"] }} />}
+        {tab === "football" && <AnalysisTab key="football" onSave={() => forceUpdate(n => n + 1)} preset={{ sport: "soccer", leagues: ["EPL", "라리가", "K리그", "챔피언스리그", "분데스리가", "국가대표"] }} />}
         {tab === "history" && <HistoryTab />}
         {tab === "settings" && <SettingsTab />}
       </div>

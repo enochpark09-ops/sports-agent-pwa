@@ -911,9 +911,11 @@ function KBOTab({ onSave }) {
   const buildSystem = () => {
     let s = `당신은 KBO 전문 스포츠 분석가이자 SNS 콘텐츠 크리에이터입니다.
 
-사용자가 제공한 KBO 경기 데이터를 바탕으로 콘텐츠를 생성하세요.
-제공된 데이터(스코어, 선수명 등)는 정확한 팩트입니다. 절대 변경하지 마세요.
-추가 맥락이 필요하면 웹 검색으로 보충하세요.
+**최우선 규칙: 사용자가 제공한 데이터(팀명, 스코어, 선수 성적, 최근 전적, 순위 등)는 절대적으로 정확한 팩트입니다.**
+- 사용자 데이터와 웹 검색 결과가 충돌하면 → 반드시 사용자 데이터를 사용하세요.
+- 사용자가 제공하지 않은 정보만 웹 검색으로 보충하세요.
+- 사용자가 제공한 스코어, 승패, 순위, 전적을 절대 변경하거나 다른 값으로 대체하지 마세요.
+- 웹 검색에서 사용자 데이터와 다른 정보가 나오면 무시하세요.
 
 ⚠️ 반드시 \`\`\`json 코드블록만 출력. 설명 텍스트 금지. 모든 값은 문자열.
 
@@ -944,16 +946,17 @@ function KBOTab({ onSave }) {
       const matchTitle = `${awayTeam} vs ${homeTeam}`;
       const scoreInfo = (homeScore && awayScore) ? `최종 스코어: ${awayTeam} ${awayScore} - ${homeScore} ${homeTeam} (${Number(homeScore) > Number(awayScore) ? homeTeam + " 승" : Number(awayScore) > Number(homeScore) ? awayTeam + " 승" : "무승부"})` : "스코어 미입력 (프리뷰)";
 
-      const prompt = `KBO 경기 정보:
+      const prompt = `KBO 경기 정보 (아래 데이터는 확인된 팩트입니다. 절대 변경하지 마세요):
 날짜: ${dateStr}
 경기: ${matchTitle}
 ${stadium ? `구장: ${stadium}` : ""}
 ${scoreInfo}
-${keyPlayers ? `주요 선수/이벤트: ${keyPlayers}` : ""}
+${keyPlayers ? `주요 선수/이벤트/전적: ${keyPlayers}` : ""}
 분석 유형: ${typeLabels[analysisType]}
 ${extra ? `추가: ${extra}` : ""}
 
-위 팩트를 정확히 사용해서 콘텐츠를 생성해주세요.`;
+⚠️ 위에 제공된 데이터(스코어, 선수 성적, 승패, 순위, 전적)가 웹 검색 결과와 다르면 위 데이터를 사용하세요.
+위 데이터에 없는 배경 정보만 웹 검색으로 보충하세요.`;
 
       const raw = await callClaude(
         [{ role: "user", content: prompt }],
@@ -1145,7 +1148,7 @@ function SettingsTab() {
       <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>앱 정보</div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 2, fontFamily: mono }}>
-          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v2.5</div>
+          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v2.6</div>
           <div><span style={{ color: T.dim }}>브랜드:</span> DoubleY Space</div>
           <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 / Haiku 4.5</div>
           <div><span style={{ color: T.dim }}>탭:</span> 🇰🇷MLB / ⚾KBO / 🏀NBA / 🏈NFL / ⚽축구</div>

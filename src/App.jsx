@@ -958,10 +958,21 @@ ${extra ? `추가: ${extra}` : ""}
 ⚠️ 위에 제공된 데이터(스코어, 선수 성적, 승패, 순위, 전적)가 웹 검색 결과와 다르면 위 데이터를 사용하세요.
 위 데이터에 없는 배경 정보만 웹 검색으로 보충하세요.`;
 
-      const raw = await callClaude(
-        [{ role: "user", content: prompt }],
-        buildSystem(), 4000, analysisType === "shorts" ? HAIKU : SONNET
-      );
+      // KBO는 사용자 입력 데이터 우선이므로 웹 검색 없이 호출
+      const envKey = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
+      const localKey = localStorage.getItem("dy_sports_api_key") || "";
+      const apiKey = envKey || localKey;
+      if (!apiKey) throw new Error("API 키가 설정되지 않았습니다.");
+      
+      const kboModel = analysisType === "shorts" ? HAIKU : SONNET;
+      const kboRes = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify({ model: kboModel, max_tokens: 4000, system: buildSystem(), messages: [{ role: "user", content: prompt }] }),
+      });
+      if (!kboRes.ok) { const err = await kboRes.json().catch(() => ({})); throw new Error(err?.error?.message || `API ${kboRes.status}`); }
+      const kboData = await kboRes.json();
+      const raw = kboData.content.filter(b => b.type === "text").map(b => b.text).join("\n");
 
       let parsed;
       try {
@@ -1148,7 +1159,7 @@ function SettingsTab() {
       <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>앱 정보</div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 2, fontFamily: mono }}>
-          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v2.6</div>
+          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v2.7</div>
           <div><span style={{ color: T.dim }}>브랜드:</span> DoubleY Space</div>
           <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 / Haiku 4.5</div>
           <div><span style={{ color: T.dim }}>탭:</span> 🇰🇷MLB / ⚾KBO / 🏀NBA / 🏈NFL / ⚽축구</div>

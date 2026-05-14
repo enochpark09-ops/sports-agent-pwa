@@ -256,21 +256,29 @@ function PostToNaverBtn({ title, body, tags }) {
   );
 }
 
-// 인스타그램 자동 포스팅 버튼 (카드뉴스 자동 생성)
+// 인스타그램 포스팅 버튼 (이미지 URL 입력 + Gemini 자동 생성 선택)
 function PostToInstagramBtn({ caption, hashtags, cardText }) {
   const [status, setStatus] = useState("idle");
   const [result, setResult] = useState(null);
+  const [imageUrl, setImageUrl] = useState("");
+  const [mode, setMode] = useState("url"); // "url" | "auto"
 
   const fullCaption = `${caption || ""}${hashtags?.length ? "\n\n" + hashtags.map(h => `#${h.replace(/^#/,"")}`).join(" ") : ""}`;
 
   const handlePost = async () => {
-    if (!confirm(`인스타그램에 카드뉴스를 자동 생성하고 포스팅할까요?`)) return;
+    if (mode === "url" && !imageUrl.trim()) {
+      alert("이미지 URL을 입력해주세요.\n\n1. gemini.google.com에서 카드뉴스 생성\n2. cloudinary.com에 업로드\n3. URL 복사 → 여기에 붙여넣기");
+      return;
+    }
+    if (!confirm(`인스타그램에 포스팅할까요?`)) return;
     setStatus("loading");
     try {
+      const body = { caption: fullCaption, card_text: cardText || "" };
+      if (mode === "url") body.image_url = imageUrl;
       const res = await fetch("/api/post-instagram", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ caption: fullCaption, card_text: cardText || "" }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "포스팅 실패");
@@ -295,21 +303,38 @@ function PostToInstagramBtn({ caption, hashtags, cardText }) {
 
   return (
     <div style={{ marginTop: 8 }}>
+      {/* 모드 선택 */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+        <button onClick={() => setMode("url")} style={{ flex: 1, padding: "6px", borderRadius: 5, fontSize: 10, fontFamily: font, fontWeight: 600, cursor: "pointer", border: `1px solid ${mode === "url" ? igPink : T.border}`, background: mode === "url" ? `${igPink}15` : "transparent", color: mode === "url" ? igPink : T.dim }}>🔗 이미지 URL 입력</button>
+        <button onClick={() => setMode("auto")} style={{ flex: 1, padding: "6px", borderRadius: 5, fontSize: 10, fontFamily: font, fontWeight: 600, cursor: "pointer", border: `1px solid ${mode === "auto" ? igPink : T.border}`, background: mode === "auto" ? `${igPink}15` : "transparent", color: mode === "auto" ? igPink : T.dim }}>🤖 AI 자동 생성</button>
+      </div>
+
+      {/* URL 입력 모드 */}
+      {mode === "url" && (
+        <div style={{ marginBottom: 6 }}>
+          <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="이미지 URL (Cloudinary 등)" style={{ width: "100%", padding: "8px 10px", borderRadius: 6, fontSize: 11, background: T.surface2, border: `1px solid ${T.border}`, color: T.text, fontFamily: mono, outline: "none" }} />
+          <div style={{ fontSize: 9, color: T.dim, marginTop: 3, lineHeight: 1.5 }}>gemini.google.com → 카드뉴스 생성 → cloudinary.com → 업로드 → URL 복사</div>
+        </div>
+      )}
+
+      {/* 자동 생성 모드 안내 */}
+      {mode === "auto" && (
+        <div style={{ fontSize: 9, color: T.dim, marginBottom: 6, padding: "6px 8px", background: T.surface2, borderRadius: 6, lineHeight: 1.5 }}>Gemini AI가 카드뉴스를 자동 생성합니다 (무료 한도 주의, 10~20초 소요)</div>
+      )}
+
       <button onClick={handlePost} disabled={status === "loading"} style={{
         width: "100%", padding: "10px 0", borderRadius: 8, fontSize: 12,
         fontFamily: font, fontWeight: 700, cursor: status === "loading" ? "not-allowed" : "pointer",
         background: c.bg, border: `1px solid ${c.border}`, color: c.text,
         display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
       }}>
-        {status === "idle" && <>📸 카드뉴스 생성 + 인스타 포스팅</>}
-        {status === "loading" && <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span> 카드뉴스 생성 → 포스팅 중...</>}
+        {status === "idle" && <>📸 인스타그램에 포스팅</>}
+        {status === "loading" && <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span> {mode === "auto" ? "카드뉴스 생성 → " : ""}포스팅 중...</>}
         {status === "success" && <>✅ 포스팅 완료!</>}
         {status === "error" && <>❌ 실패 — 탭하여 재시도</>}
       </button>
       {status === "success" && result?.url && (
-        <a href={result.url} target="_blank" rel="noopener noreferrer" style={{
-          display: "block", textAlign: "center", fontSize: 11, color: T.accent, marginTop: 6, fontFamily: mono,
-        }}>🔗 인스타그램 확인하기 →</a>
+        <a href={result.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", textAlign: "center", fontSize: 11, color: T.accent, marginTop: 6, fontFamily: mono }}>🔗 인스타그램 확인하기 →</a>
       )}
       {status === "error" && result?.error && (
         <div style={{ fontSize: 10, color: T.red, marginTop: 4, textAlign: "center" }}>{result.error}</div>

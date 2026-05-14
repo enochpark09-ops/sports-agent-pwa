@@ -65,6 +65,40 @@ async function callClaude(messages, system, maxTokens = 2000, model = SONNET) {
   return data.content.filter(b => b.type === "text").map(b => b.text).join("\n");
 }
 
+// 이미지 포함 Claude API 호출
+async function callClaudeWithImage(imageBase64, imageType, textPrompt, system, maxTokens = 4000, model = SONNET) {
+  const envKey = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
+  const localKey = localStorage.getItem("dy_sports_api_key") || "";
+  const apiKey = envKey || localKey;
+  if (!apiKey) throw new Error("API 키가 설정되지 않았습니다.");
+
+  const messages = [{
+    role: "user",
+    content: [
+      { type: "image", source: { type: "base64", media_type: imageType, data: imageBase64 } },
+      { type: "text", text: textPrompt },
+    ],
+  }];
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({ model, max_tokens: maxTokens, system, messages }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`API 오류 (${res.status}): ${err?.error?.message || `HTTP ${res.status}`}`);
+  }
+  const data = await res.json();
+  return data.content.filter(b => b.type === "text").map(b => b.text).join("\n");
+}
+
 function Chip({ children, active, onClick, color = T.accent }) {
   return (<button onClick={onClick} style={{ padding: "6px 14px", borderRadius: 6, fontSize: 12, fontFamily: font, fontWeight: 600, cursor: "pointer", border: `1px solid ${active ? color : T.border}`, background: active ? `${color}18` : "transparent", color: active ? color : T.muted, transition: "all 0.15s" }}>{children}</button>);
 }
@@ -785,11 +819,94 @@ function KBOTab({ onSave }) {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [expandedChannel, setExpandedChannel] = useState(null);
+  // 이미지 업로드 관련
+  const [imagePreview, setImagePreview] = useState(null);
+  const [imageData, setImageData] = useState(null); // { base64, type }
+  const [extracting, setExtracting] = useState(false);
+  const fileInputRef = useRef(null);
 
   const toggleChannel = (ch) => setChannels(prev => ({ ...prev, [ch]: !prev[ch] }));
   const selectedCount = Object.values(channels).filter(Boolean).length;
   const channelLabels = { blog: "📝 블로그", x: "𝕏 X", ig: "📸 인스타" };
   const channelColors = { blog: "#03C75A", x: T.text, ig: "#E1306C" };
+
+  // 이미지 업로드 핸들러
+  const handleImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target.result;
+      setImagePreview(dataUrl);
+      const base64 = dataUrl.split(",")[1];
+      const type = file.type || "image/jpeg";
+      setImageData({ base64, type });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // 이미지에서 경기 데이터 자동 추출
+  const extractFromImage = async () => {
+    if (!imageData) return;
+    setExtracting(true);
+    try {
+      const extractPrompt = `이 이미지는 KBO 야구 경기 정보가 포함된 스크린샷입니다.
+이미지에서 다음 정보를 추출해서 JSON으로 응답해주세요:
+
+\`\`\`json
+{
+  "away_team": "원정팀명",
+  "home_team": "홈팀명",
+  "away_score": "원정팀 점수 (없으면 빈문자열)",
+  "home_score": "홈팀 점수 (없으면 빈문자열)",
+  "date": "경기 날짜",
+  "stadium": "구장명 (없으면 빈문자열)",
+  "key_info": "선발투수, 주요타자 성적, 팀 순위, 최근 전적 등 모든 핵심 데이터를 한 문장으로",
+  "is_preview": true/false
+}
+\`\`\`
+
+이미지에서 보이는 모든 통계 데이터를 key_info에 최대한 상세히 포함하세요.
+선발투수 이름과 성적, 키플레이어 타율/홈런, 팀 순위와 승패 기록, 최근 경기 결과 등.`;
+
+      const raw = await callClaudeWithImage(
+        imageData.base64, imageData.type, extractPrompt,
+        "이미지에서 KBO 야구 경기 데이터를 정확히 추출하세요. 반드시 JSON만 출력.", 1000, SONNET
+      );
+
+      let parsed;
+      try {
+        const cb = raw.match(/```json\s*([\s\S]*?)```/);
+        if (cb) { parsed = JSON.parse(cb[1].trim()); }
+        else { const f = raw.indexOf("{"), l = raw.lastIndexOf("}"); parsed = (f !== -1 && l > f) ? JSON.parse(raw.substring(f, l + 1)) : null; }
+      } catch { parsed = null; }
+
+      if (parsed) {
+        // 추출된 데이터로 폼 자동 채우기
+        if (parsed.away_team) {
+          const matchedAway = KBO_TEAMS.find(t => parsed.away_team.includes(t));
+          if (matchedAway) setAwayTeam(matchedAway);
+        }
+        if (parsed.home_team) {
+          const matchedHome = KBO_TEAMS.find(t => parsed.home_team.includes(t));
+          if (matchedHome) setHomeTeam(matchedHome);
+        }
+        if (parsed.away_score) setAwayScore(parsed.away_score);
+        if (parsed.home_score) setHomeScore(parsed.home_score);
+        if (parsed.date) setGameDate(parsed.date);
+        if (parsed.stadium) setStadium(parsed.stadium);
+        if (parsed.key_info) setKeyPlayers(parsed.key_info);
+        if (parsed.is_preview) setAnalysisType("preview");
+        else if (parsed.away_score && parsed.home_score) setAnalysisType("review");
+        alert("✅ 이미지에서 데이터 추출 완료! 내용을 확인 후 생성 버튼을 눌러주세요.");
+      } else {
+        alert("❌ 이미지 분석 실패. 수동으로 입력해주세요.");
+      }
+    } catch (e) {
+      alert(`❌ 이미지 분석 오류: ${e.message}`);
+    }
+    setExtracting(false);
+  };
 
   const buildSystem = () => {
     let s = `당신은 KBO 전문 스포츠 분석가이자 SNS 콘텐츠 크리에이터입니다.
@@ -864,6 +981,37 @@ ${extra ? `추가: ${extra}` : ""}
 
   return (
     <div style={{ padding: "16px 0" }}>
+      {/* 이미지 업로드 */}
+      <div style={{ marginBottom: 16, padding: "14px 16px", background: T.surface, borderRadius: 12, border: `1px solid ${T.gold}30` }}>
+        <SectionLabel>📸 이미지로 자동 입력</SectionLabel>
+        <div style={{ fontSize: 11, color: T.muted, marginBottom: 10, lineHeight: 1.6 }}>
+          네이버 스포츠 등의 경기 정보 스크린샷을 올리면 AI가 자동으로 데이터를 추출합니다.
+        </div>
+        <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} style={{ display: "none" }} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => fileInputRef.current?.click()} style={{
+            flex: 1, padding: "10px", borderRadius: 8, fontSize: 12,
+            fontFamily: font, fontWeight: 600, cursor: "pointer",
+            border: `1.5px dashed ${imagePreview ? T.accent : T.border}`,
+            background: imagePreview ? T.accentDim : "transparent",
+            color: imagePreview ? T.accent : T.muted,
+          }}>{imagePreview ? "📷 다른 이미지 선택" : "📷 스크린샷 업로드"}</button>
+          {imagePreview && (
+            <button onClick={extractFromImage} disabled={extracting} style={{
+              flex: 1, padding: "10px", borderRadius: 8, fontSize: 12,
+              fontFamily: font, fontWeight: 700, cursor: extracting ? "not-allowed" : "pointer",
+              border: "none", background: T.gold, color: "#000",
+              opacity: extracting ? 0.6 : 1,
+            }}>{extracting ? "🔍 분석 중..." : "🔍 자동 추출"}</button>
+          )}
+        </div>
+        {imagePreview && (
+          <div style={{ marginTop: 10, borderRadius: 8, overflow: "hidden", border: `1px solid ${T.border}` }}>
+            <img src={imagePreview} alt="uploaded" style={{ width: "100%", maxHeight: 200, objectFit: "cover" }} />
+          </div>
+        )}
+      </div>
+
       {/* 팀 선택 */}
       <div style={{ marginBottom: 14 }}>
         <SectionLabel>MATCH</SectionLabel>
@@ -997,7 +1145,7 @@ function SettingsTab() {
       <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>앱 정보</div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 2, fontFamily: mono }}>
-          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v2.4</div>
+          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v2.5</div>
           <div><span style={{ color: T.dim }}>브랜드:</span> DoubleY Space</div>
           <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 / Haiku 4.5</div>
           <div><span style={{ color: T.dim }}>탭:</span> 🇰🇷MLB / ⚾KBO / 🏀NBA / 🏈NFL / ⚽축구</div>

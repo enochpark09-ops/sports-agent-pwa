@@ -256,26 +256,21 @@ function PostToNaverBtn({ title, body, tags }) {
   );
 }
 
-// 인스타그램 자동 포스팅 버튼 컴포넌트
+// 인스타그램 자동 포스팅 버튼 (카드뉴스 자동 생성)
 function PostToInstagramBtn({ caption, hashtags, cardText }) {
   const [status, setStatus] = useState("idle");
   const [result, setResult] = useState(null);
-  const [imageUrl, setImageUrl] = useState("");
 
   const fullCaption = `${caption || ""}${hashtags?.length ? "\n\n" + hashtags.map(h => `#${h.replace(/^#/,"")}`).join(" ") : ""}`;
 
   const handlePost = async () => {
-    if (!imageUrl.trim()) {
-      alert("인스타그램 포스팅에는 이미지 URL이 필요합니다.\n\n공개적으로 접근 가능한 이미지 URL을 입력해주세요.\n(예: Imgur, Cloudinary 등에 업로드된 이미지)");
-      return;
-    }
-    if (!confirm(`인스타그램에 포스팅할까요?\n\n캡션: ${fullCaption.substring(0, 100)}...`)) return;
+    if (!confirm(`인스타그램에 카드뉴스를 자동 생성하고 포스팅할까요?`)) return;
     setStatus("loading");
     try {
       const res = await fetch("/api/post-instagram", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ caption: fullCaption, image_url: imageUrl }),
+        body: JSON.stringify({ caption: fullCaption, card_text: cardText || "" }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "포스팅 실패");
@@ -285,7 +280,7 @@ function PostToInstagramBtn({ caption, hashtags, cardText }) {
     } catch (e) {
       setStatus("error");
       setResult({ error: e.message });
-      setTimeout(() => setStatus("idle"), 5000);
+      setTimeout(() => setStatus("idle"), 8000);
     }
   };
 
@@ -300,25 +295,14 @@ function PostToInstagramBtn({ caption, hashtags, cardText }) {
 
   return (
     <div style={{ marginTop: 8 }}>
-      {/* 이미지 URL 입력 */}
-      <div style={{ marginBottom: 6 }}>
-        <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="이미지 URL 입력 (https://...)" style={{
-          width: "100%", padding: "8px 10px", borderRadius: 6, fontSize: 11,
-          background: T.surface2, border: `1px solid ${T.border}`, color: T.text,
-          fontFamily: mono, outline: "none",
-        }} />
-        <div style={{ fontSize: 9, color: T.dim, marginTop: 3 }}>
-          공개 접근 가능한 이미지 URL 필요 (Imgur, Cloudinary 등)
-        </div>
-      </div>
       <button onClick={handlePost} disabled={status === "loading"} style={{
         width: "100%", padding: "10px 0", borderRadius: 8, fontSize: 12,
         fontFamily: font, fontWeight: 700, cursor: status === "loading" ? "not-allowed" : "pointer",
         background: c.bg, border: `1px solid ${c.border}`, color: c.text,
         display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
       }}>
-        {status === "idle" && <>📸 인스타그램에 바로 포스팅</>}
-        {status === "loading" && <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span> 포스팅 중...</>}
+        {status === "idle" && <>📸 카드뉴스 생성 + 인스타 포스팅</>}
+        {status === "loading" && <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span> 카드뉴스 생성 → 포스팅 중...</>}
         {status === "success" && <>✅ 포스팅 완료!</>}
         {status === "error" && <>❌ 실패 — 탭하여 재시도</>}
       </button>
@@ -1240,7 +1224,7 @@ function SettingsTab() {
       <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>앱 정보</div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 2, fontFamily: mono }}>
-          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v2.8</div>
+          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v2.9</div>
           <div><span style={{ color: T.dim }}>브랜드:</span> DoubleY Space</div>
           <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 / Haiku 4.5</div>
           <div><span style={{ color: T.dim }}>탭:</span> 🇰🇷MLB / ⚾KBO / 🏀NBA / 🏈NFL / ⚽축구</div>

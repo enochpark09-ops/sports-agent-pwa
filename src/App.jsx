@@ -255,6 +255,85 @@ function PostToNaverBtn({ title, body, tags }) {
     </div>
   );
 }
+
+// 인스타그램 자동 포스팅 버튼 컴포넌트
+function PostToInstagramBtn({ caption, hashtags, cardText }) {
+  const [status, setStatus] = useState("idle");
+  const [result, setResult] = useState(null);
+  const [imageUrl, setImageUrl] = useState("");
+
+  const fullCaption = `${caption || ""}${hashtags?.length ? "\n\n" + hashtags.map(h => `#${h.replace(/^#/,"")}`).join(" ") : ""}`;
+
+  const handlePost = async () => {
+    if (!imageUrl.trim()) {
+      alert("인스타그램 포스팅에는 이미지 URL이 필요합니다.\n\n공개적으로 접근 가능한 이미지 URL을 입력해주세요.\n(예: Imgur, Cloudinary 등에 업로드된 이미지)");
+      return;
+    }
+    if (!confirm(`인스타그램에 포스팅할까요?\n\n캡션: ${fullCaption.substring(0, 100)}...`)) return;
+    setStatus("loading");
+    try {
+      const res = await fetch("/api/post-instagram", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caption: fullCaption, image_url: imageUrl }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "포스팅 실패");
+      setStatus("success");
+      setResult(data);
+      setTimeout(() => setStatus("idle"), 5000);
+    } catch (e) {
+      setStatus("error");
+      setResult({ error: e.message });
+      setTimeout(() => setStatus("idle"), 5000);
+    }
+  };
+
+  const igPink = "#E1306C";
+  const colors = {
+    idle: { bg: `${igPink}18`, border: `${igPink}44`, text: igPink },
+    loading: { bg: `${T.blue}18`, border: `${T.blue}44`, text: T.blue },
+    success: { bg: `${T.green}18`, border: `${T.green}44`, text: T.green },
+    error: { bg: `${T.red}18`, border: `${T.red}44`, text: T.red },
+  };
+  const c = colors[status];
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      {/* 이미지 URL 입력 */}
+      <div style={{ marginBottom: 6 }}>
+        <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="이미지 URL 입력 (https://...)" style={{
+          width: "100%", padding: "8px 10px", borderRadius: 6, fontSize: 11,
+          background: T.surface2, border: `1px solid ${T.border}`, color: T.text,
+          fontFamily: mono, outline: "none",
+        }} />
+        <div style={{ fontSize: 9, color: T.dim, marginTop: 3 }}>
+          공개 접근 가능한 이미지 URL 필요 (Imgur, Cloudinary 등)
+        </div>
+      </div>
+      <button onClick={handlePost} disabled={status === "loading"} style={{
+        width: "100%", padding: "10px 0", borderRadius: 8, fontSize: 12,
+        fontFamily: font, fontWeight: 700, cursor: status === "loading" ? "not-allowed" : "pointer",
+        background: c.bg, border: `1px solid ${c.border}`, color: c.text,
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+      }}>
+        {status === "idle" && <>📸 인스타그램에 바로 포스팅</>}
+        {status === "loading" && <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span> 포스팅 중...</>}
+        {status === "success" && <>✅ 포스팅 완료!</>}
+        {status === "error" && <>❌ 실패 — 탭하여 재시도</>}
+      </button>
+      {status === "success" && result?.url && (
+        <a href={result.url} target="_blank" rel="noopener noreferrer" style={{
+          display: "block", textAlign: "center", fontSize: 11, color: T.accent, marginTop: 6, fontFamily: mono,
+        }}>🔗 인스타그램 확인하기 →</a>
+      )}
+      {status === "error" && result?.error && (
+        <div style={{ fontSize: 10, color: T.red, marginTop: 4, textAlign: "center" }}>{result.error}</div>
+      )}
+    </div>
+  );
+}
+
 function SectionLabel({ children }) {
   return (<div style={{ fontSize: 10, fontFamily: mono, color: T.dim, letterSpacing: 1.5, marginBottom: 10, textTransform: "uppercase" }}>{children}</div>);
 }
@@ -544,6 +623,7 @@ ${noGameText}
                 {result.instagram.card_text && <div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>CARD TEXT</div><div style={{ fontSize: 16, fontWeight: 800, color: T.text, padding: 14, background: T.surface2, borderRadius: 8, textAlign: "center", lineHeight: 1.5 }}>{result.instagram.card_text}</div></div>}
                 <div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>CAPTION</div><div style={{ fontSize: 12, color: T.text, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{result.instagram.caption}</div></div>
                 <TagList tags={result.instagram.hashtags} />
+                <PostToInstagramBtn caption={result.instagram.caption} hashtags={result.instagram.hashtags} cardText={result.instagram.card_text} />
               </ChannelCard>
             )}
 
@@ -791,6 +871,7 @@ ${extra ? `추가 요청: ${extra}` : ""}
               {result.instagram.card_text && <div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>CARD TEXT</div><div style={{ fontSize: 16, fontWeight: 800, color: T.text, padding: 14, background: T.surface2, borderRadius: 8, textAlign: "center", lineHeight: 1.5 }}>{safeStr(result.instagram.card_text)}</div></div>}
               <div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>CAPTION</div><div style={{ fontSize: 12, color: T.text, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{safeStr(result.instagram.caption)}</div></div>
               <TagList tags={result.instagram.hashtags} />
+              <PostToInstagramBtn caption={safeStr(result.instagram.caption)} hashtags={result.instagram.hashtags} cardText={safeStr(result.instagram.card_text)} />
             </ChannelCard>
           )}
         </div>
@@ -1095,7 +1176,7 @@ ${extra ? `추가: ${extra}` : ""}
           <SectionLabel>채널별 포스팅</SectionLabel>
           {result.naver_blog && <ChannelCard icon="📝" label="네이버 블로그" color="#03C75A" expanded={expandedChannel === "blog"} onToggle={() => toggle("blog")} copyText={`${safeStr(result.naver_blog.title)}\n\n${safeStr(result.naver_blog.body)}\n\n${(result.naver_blog.tags||[]).map(h=>`#${h}`).join(" ")}`}><div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>TITLE</div><div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{safeStr(result.naver_blog.title)}</div></div><div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>BODY</div><div style={{ fontSize: 13, color: T.text, lineHeight: 2, whiteSpace: "pre-wrap", padding: 14, background: T.surface2, borderRadius: 8, maxHeight: 400, overflowY: "auto" }}>{safeStr(result.naver_blog.body)}</div></div><TagList tags={result.naver_blog.tags} /></ChannelCard>}
           {result.x_thread && <ChannelCard icon="𝕏" label="X Thread" color={T.text} expanded={expandedChannel === "x"} onToggle={() => toggle("x")} copyText={(result.x_thread.tweets||[]).map((t,i)=>`${i+1}/${result.x_thread.tweets.length} ${safeStr(t)}`).join("\n\n")}><div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 8 }}>THREAD · {result.x_thread.tweets?.length}트윗</div>{(result.x_thread.tweets||[]).map((tweet,i)=>(<div key={i} style={{ padding: "10px 14px", marginBottom: 6, background: T.surface2, borderRadius: 8, borderLeft: `3px solid ${i===0?T.accent:T.border}` }}><div style={{ fontSize: 9, color: T.dim, fontFamily: mono, marginBottom: 4 }}>{i+1}/{result.x_thread.tweets.length}</div><div style={{ fontSize: 12, color: T.text, lineHeight: 1.7 }}>{safeStr(tweet)}</div></div>))}</div><TagList tags={result.x_thread.hashtags} /><PostToXBtn tweets={result.x_thread.tweets} hashtags={result.x_thread.hashtags} /></ChannelCard>}
-          {result.instagram && <ChannelCard icon="📸" label="Instagram" color="#E1306C" expanded={expandedChannel === "ig"} onToggle={() => toggle("ig")} copyText={`${safeStr(result.instagram.caption)}\n\n${(result.instagram.hashtags||[]).map(h=>`#${h}`).join(" ")}`}>{result.instagram.card_text && <div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>CARD TEXT</div><div style={{ fontSize: 16, fontWeight: 800, color: T.text, padding: 14, background: T.surface2, borderRadius: 8, textAlign: "center" }}>{safeStr(result.instagram.card_text)}</div></div>}<div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>CAPTION</div><div style={{ fontSize: 12, color: T.text, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{safeStr(result.instagram.caption)}</div></div><TagList tags={result.instagram.hashtags} /></ChannelCard>}
+          {result.instagram && <ChannelCard icon="📸" label="Instagram" color="#E1306C" expanded={expandedChannel === "ig"} onToggle={() => toggle("ig")} copyText={`${safeStr(result.instagram.caption)}\n\n${(result.instagram.hashtags||[]).map(h=>`#${h}`).join(" ")}`}>{result.instagram.card_text && <div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>CARD TEXT</div><div style={{ fontSize: 16, fontWeight: 800, color: T.text, padding: 14, background: T.surface2, borderRadius: 8, textAlign: "center" }}>{safeStr(result.instagram.card_text)}</div></div>}<div style={{ marginBottom: 10 }}><div style={{ fontSize: 10, color: T.dim, fontFamily: mono, marginBottom: 4 }}>CAPTION</div><div style={{ fontSize: 12, color: T.text, lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{safeStr(result.instagram.caption)}</div></div><TagList tags={result.instagram.hashtags} /><PostToInstagramBtn caption={safeStr(result.instagram.caption)} hashtags={result.instagram.hashtags} cardText={safeStr(result.instagram.card_text)} /></ChannelCard>}
         </div>
       )}
     </div>
@@ -1159,7 +1240,7 @@ function SettingsTab() {
       <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>앱 정보</div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 2, fontFamily: mono }}>
-          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v2.7</div>
+          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v2.8</div>
           <div><span style={{ color: T.dim }}>브랜드:</span> DoubleY Space</div>
           <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 / Haiku 4.5</div>
           <div><span style={{ color: T.dim }}>탭:</span> 🇰🇷MLB / ⚾KBO / 🏀NBA / 🏈NFL / ⚽축구</div>

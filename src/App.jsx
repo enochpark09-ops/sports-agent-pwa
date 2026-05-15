@@ -256,7 +256,7 @@ function PostToNaverBtn({ title, body, tags }) {
   );
 }
 
-// 인스타그램 포스팅 버튼 (이미지 파일 업로드 → Cloudinary → IG 포스팅)
+// 인스타그램 포스팅 버튼 (브라우저→Cloudinary 직접 업로드→IG 포스팅)
 function PostToInstagramBtn({ caption, hashtags, cardText }) {
   const [status, setStatus] = useState("idle");
   const [result, setResult] = useState(null);
@@ -275,6 +275,23 @@ function PostToInstagramBtn({ caption, hashtags, cardText }) {
     reader.readAsDataURL(file);
   };
 
+  // 브라우저에서 직접 Cloudinary에 unsigned 업로드
+  const uploadToCloudinary = async (file) => {
+    const cloudName = "dddpkkzaf";
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", "edgestats_unsigned");
+    formData.append("folder", "edgestats");
+
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+      method: "POST",
+      body: formData,
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(`Cloudinary: ${data.error.message}`);
+    return data.secure_url;
+  };
+
   const handlePost = async () => {
     if (!imageFile) {
       alert("카드뉴스 이미지를 선택해주세요.\n\n1. gemini.google.com에서 카드뉴스 생성\n2. 이미지 다운로드\n3. 여기서 파일 선택");
@@ -283,19 +300,14 @@ function PostToInstagramBtn({ caption, hashtags, cardText }) {
     if (!confirm("인스타그램에 포스팅할까요?")) return;
     setStatus("loading");
     try {
-      // 이미지를 base64로 변환 → 서버로 전송
-      const base64 = imagePreview.split(",")[1];
-      const mimeType = imageFile.type || "image/png";
+      // 1. 브라우저에서 Cloudinary에 직접 업로드
+      const imageUrl = await uploadToCloudinary(imageFile);
 
+      // 2. URL만 서버로 전달 → 인스타 포스팅
       const res = await fetch("/api/post-instagram", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          caption: fullCaption,
-          card_text: cardText || "",
-          image_base64: base64,
-          image_type: mimeType,
-        }),
+        body: JSON.stringify({ caption: fullCaption, image_url: imageUrl }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "포스팅 실패");
@@ -321,22 +333,18 @@ function PostToInstagramBtn({ caption, hashtags, cardText }) {
   return (
     <div style={{ marginTop: 8 }}>
       <input ref={igFileRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImageSelect} style={{ display: "none" }} />
-
-      {/* 이미지 선택 */}
       <button onClick={() => igFileRef.current?.click()} style={{
         width: "100%", padding: "10px", borderRadius: 8, fontSize: 11, marginBottom: 6,
         fontFamily: font, fontWeight: 600, cursor: "pointer",
         border: `1.5px dashed ${imagePreview ? igPink : T.border}`,
         background: imagePreview ? `${igPink}10` : "transparent",
         color: imagePreview ? igPink : T.dim,
-      }}>{imagePreview ? "📷 다른 이미지 선택" : "📷 카드뉴스 이미지 선택 (재미나이에서 다운로드한 파일)"}</button>
-
+      }}>{imagePreview ? "📷 다른 이미지 선택" : "📷 카드뉴스 이미지 선택"}</button>
       {imagePreview && (
         <div style={{ marginBottom: 6, borderRadius: 8, overflow: "hidden", border: `1px solid ${T.border}` }}>
           <img src={imagePreview} alt="card" style={{ width: "100%", maxHeight: 200, objectFit: "cover" }} />
         </div>
       )}
-
       <button onClick={handlePost} disabled={status === "loading" || !imageFile} style={{
         width: "100%", padding: "10px 0", borderRadius: 8, fontSize: 12,
         fontFamily: font, fontWeight: 700,
@@ -345,7 +353,7 @@ function PostToInstagramBtn({ caption, hashtags, cardText }) {
         opacity: !imageFile && status === "idle" ? 0.5 : 1,
         display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
       }}>
-        {status === "idle" && <>📸 Cloudinary 업로드 + 인스타 포스팅</>}
+        {status === "idle" && <>📸 인스타그램에 포스팅</>}
         {status === "loading" && <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span> 업로드 → 포스팅 중...</>}
         {status === "success" && <>✅ 포스팅 완료!</>}
         {status === "error" && <>❌ 실패 — 탭하여 재시도</>}
@@ -1266,7 +1274,7 @@ function SettingsTab() {
       <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>앱 정보</div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 2, fontFamily: mono }}>
-          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v3.3</div>
+          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v3.4</div>
           <div><span style={{ color: T.dim }}>브랜드:</span> DoubleY Space</div>
           <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 / Haiku 4.5</div>
           <div><span style={{ color: T.dim }}>탭:</span> 🇰🇷MLB / ⚾KBO / 🏀NBA / 🏈NFL / ⚽축구</div>

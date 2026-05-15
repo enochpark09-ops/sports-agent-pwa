@@ -256,29 +256,46 @@ function PostToNaverBtn({ title, body, tags }) {
   );
 }
 
-// 인스타그램 포스팅 버튼 (이미지 URL 입력 + Gemini 자동 생성 선택)
+// 인스타그램 포스팅 버튼 (이미지 파일 업로드 → Cloudinary → IG 포스팅)
 function PostToInstagramBtn({ caption, hashtags, cardText }) {
   const [status, setStatus] = useState("idle");
   const [result, setResult] = useState(null);
-  const [imageUrl, setImageUrl] = useState("");
-  const [mode, setMode] = useState("url"); // "url" | "auto"
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const igFileRef = useRef(null);
 
   const fullCaption = `${caption || ""}${hashtags?.length ? "\n\n" + hashtags.map(h => `#${h.replace(/^#/,"")}`).join(" ") : ""}`;
 
+  const handleImageSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setImagePreview(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
   const handlePost = async () => {
-    if (mode === "url" && !imageUrl.trim()) {
-      alert("이미지 URL을 입력해주세요.\n\n1. gemini.google.com에서 카드뉴스 생성\n2. cloudinary.com에 업로드\n3. URL 복사 → 여기에 붙여넣기");
+    if (!imageFile) {
+      alert("카드뉴스 이미지를 선택해주세요.\n\n1. gemini.google.com에서 카드뉴스 생성\n2. 이미지 다운로드\n3. 여기서 파일 선택");
       return;
     }
-    if (!confirm(`인스타그램에 포스팅할까요?`)) return;
+    if (!confirm("인스타그램에 포스팅할까요?")) return;
     setStatus("loading");
     try {
-      const body = { caption: fullCaption, card_text: cardText || "" };
-      if (mode === "url") body.image_url = imageUrl;
+      // 이미지를 base64로 변환 → 서버로 전송
+      const base64 = imagePreview.split(",")[1];
+      const mimeType = imageFile.type || "image/png";
+
       const res = await fetch("/api/post-instagram", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          caption: fullCaption,
+          card_text: cardText || "",
+          image_base64: base64,
+          image_type: mimeType,
+        }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "포스팅 실패");
@@ -303,33 +320,33 @@ function PostToInstagramBtn({ caption, hashtags, cardText }) {
 
   return (
     <div style={{ marginTop: 8 }}>
-      {/* 모드 선택 */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
-        <button onClick={() => setMode("url")} style={{ flex: 1, padding: "6px", borderRadius: 5, fontSize: 10, fontFamily: font, fontWeight: 600, cursor: "pointer", border: `1px solid ${mode === "url" ? igPink : T.border}`, background: mode === "url" ? `${igPink}15` : "transparent", color: mode === "url" ? igPink : T.dim }}>🔗 이미지 URL 입력</button>
-        <button onClick={() => setMode("auto")} style={{ flex: 1, padding: "6px", borderRadius: 5, fontSize: 10, fontFamily: font, fontWeight: 600, cursor: "pointer", border: `1px solid ${mode === "auto" ? igPink : T.border}`, background: mode === "auto" ? `${igPink}15` : "transparent", color: mode === "auto" ? igPink : T.dim }}>🤖 AI 자동 생성</button>
-      </div>
+      <input ref={igFileRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImageSelect} style={{ display: "none" }} />
 
-      {/* URL 입력 모드 */}
-      {mode === "url" && (
-        <div style={{ marginBottom: 6 }}>
-          <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="이미지 URL (Cloudinary 등)" style={{ width: "100%", padding: "8px 10px", borderRadius: 6, fontSize: 11, background: T.surface2, border: `1px solid ${T.border}`, color: T.text, fontFamily: mono, outline: "none" }} />
-          <div style={{ fontSize: 9, color: T.dim, marginTop: 3, lineHeight: 1.5 }}>gemini.google.com → 카드뉴스 생성 → cloudinary.com → 업로드 → URL 복사</div>
+      {/* 이미지 선택 */}
+      <button onClick={() => igFileRef.current?.click()} style={{
+        width: "100%", padding: "10px", borderRadius: 8, fontSize: 11, marginBottom: 6,
+        fontFamily: font, fontWeight: 600, cursor: "pointer",
+        border: `1.5px dashed ${imagePreview ? igPink : T.border}`,
+        background: imagePreview ? `${igPink}10` : "transparent",
+        color: imagePreview ? igPink : T.dim,
+      }}>{imagePreview ? "📷 다른 이미지 선택" : "📷 카드뉴스 이미지 선택 (재미나이에서 다운로드한 파일)"}</button>
+
+      {imagePreview && (
+        <div style={{ marginBottom: 6, borderRadius: 8, overflow: "hidden", border: `1px solid ${T.border}` }}>
+          <img src={imagePreview} alt="card" style={{ width: "100%", maxHeight: 200, objectFit: "cover" }} />
         </div>
       )}
 
-      {/* 자동 생성 모드 안내 */}
-      {mode === "auto" && (
-        <div style={{ fontSize: 9, color: T.dim, marginBottom: 6, padding: "6px 8px", background: T.surface2, borderRadius: 6, lineHeight: 1.5 }}>Gemini AI가 카드뉴스를 자동 생성합니다 (무료 한도 주의, 10~20초 소요)</div>
-      )}
-
-      <button onClick={handlePost} disabled={status === "loading"} style={{
+      <button onClick={handlePost} disabled={status === "loading" || !imageFile} style={{
         width: "100%", padding: "10px 0", borderRadius: 8, fontSize: 12,
-        fontFamily: font, fontWeight: 700, cursor: status === "loading" ? "not-allowed" : "pointer",
+        fontFamily: font, fontWeight: 700,
+        cursor: (status === "loading" || !imageFile) ? "not-allowed" : "pointer",
         background: c.bg, border: `1px solid ${c.border}`, color: c.text,
+        opacity: !imageFile && status === "idle" ? 0.5 : 1,
         display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
       }}>
-        {status === "idle" && <>📸 인스타그램에 포스팅</>}
-        {status === "loading" && <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span> {mode === "auto" ? "카드뉴스 생성 → " : ""}포스팅 중...</>}
+        {status === "idle" && <>📸 Cloudinary 업로드 + 인스타 포스팅</>}
+        {status === "loading" && <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</span> 업로드 → 포스팅 중...</>}
         {status === "success" && <>✅ 포스팅 완료!</>}
         {status === "error" && <>❌ 실패 — 탭하여 재시도</>}
       </button>
@@ -1249,7 +1266,7 @@ function SettingsTab() {
       <div style={{ padding: 16, background: T.surface, borderRadius: 10, border: `1px solid ${T.border}` }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 8 }}>앱 정보</div>
         <div style={{ fontSize: 11, color: T.muted, lineHeight: 2, fontFamily: mono }}>
-          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v3.2</div>
+          <div><span style={{ color: T.dim }}>앱:</span> EdgeStats v3.3</div>
           <div><span style={{ color: T.dim }}>브랜드:</span> DoubleY Space</div>
           <div><span style={{ color: T.dim }}>모델:</span> Sonnet 4.6 / Haiku 4.5</div>
           <div><span style={{ color: T.dim }}>탭:</span> 🇰🇷MLB / ⚾KBO / 🏀NBA / 🏈NFL / ⚽축구</div>

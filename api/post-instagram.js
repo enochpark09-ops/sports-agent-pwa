@@ -190,7 +190,7 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const { caption, card_text, image_url } = req.body;
+    const { caption, card_text, image_url, image_base64, image_type } = req.body;
 
     if (!caption) {
       return res.status(400).json({ error: "caption이 필요합니다." });
@@ -198,13 +198,25 @@ export default async function handler(req, res) {
 
     let finalImageUrl = image_url; // 직접 URL이 있으면 사용
 
+    if (!finalImageUrl && image_base64) {
+      // ── 이미지 파일을 Cloudinary에 업로드 ──
+      finalImageUrl = await uploadToCloudinary(image_base64, image_type || "image/png");
+    }
+
     if (!finalImageUrl) {
-      // ── Gemini로 카드뉴스 생성 → Cloudinary 업로드 ──
-      const geminiImage = await generateCardWithGemini(
-        card_text || caption.substring(0, 80),
-        caption
-      );
-      finalImageUrl = await uploadToCloudinary(geminiImage.base64, geminiImage.mimeType);
+      // ── Gemini로 카드뉴스 생성 시도 ──
+      try {
+        const geminiImage = await generateCardWithGemini(
+          card_text || caption.substring(0, 80),
+          caption
+        );
+        finalImageUrl = await uploadToCloudinary(geminiImage.base64, geminiImage.mimeType);
+      } catch (geminiErr) {
+        return res.status(400).json({
+          success: false,
+          error: `이미지가 필요합니다. 파일을 선택하거나 Gemini 오류: ${geminiErr.message}`,
+        });
+      }
     }
 
     // ── Instagram 포스팅 ──
